@@ -19,6 +19,8 @@ data class TaskEntity(
     val parentId: String?,
     val createdAt: String,
     val updatedAt: String,
+    /** Soft start time (HH:mm) such as "in the morning"; added in schema version 2. */
+    val preferredStart: String? = null,
 )
 
 @Entity(tableName = "fixed_events", indices = [Index("date")])

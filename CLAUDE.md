@@ -6,11 +6,12 @@ This repository was created from the Equisteg product template (the company rule
 an Android-first, **local-first** personal assistant, and its build documents override the template's generic stack
 (master build doc §1 and §6). Precedence:
 
-1. `docs/product/MYDAYCOMPANION_MASTER_BUILD.md`
-2. `docs/product/MYDAYCOMPANION_BUILD_SPEC.md`
-3. `docs/prebuild/*` (precheck evidence and resolved decisions; run `/precheck` to refresh)
-4. `product.config.json`
-5. The Equisteg template rules below — they still apply wherever the items above are silent
+1. `docs/product/MYDAYCOMPANION_AGENT_OS_BUILD.md` (v2, 2026-10-09: personal agent OS scope, approvals, migration, theft protection, infrastructure costs; it replaces the scope sections of the two documents below and keeps their security rules)
+2. `docs/product/MYDAYCOMPANION_MASTER_BUILD.md`
+3. `docs/product/MYDAYCOMPANION_BUILD_SPEC.md`
+4. `docs/prebuild/*` (precheck evidence and resolved decisions; run `/precheck` to refresh)
+5. `product.config.json`
+6. The Equisteg template rules below — they still apply wherever the items above are silent
    (zero-cost rule, Git workflow, branch names, never-push rules, PR template, risks-and-issues format, NEEDS HUMAN).
 
 What the override changes for this product (details in `docs/prebuild/03-architecture-decision.md`):
@@ -30,7 +31,7 @@ recorded in `docs/prebuild/00-prebuild-summary.md`; open founder decisions are i
 ## MyDayCompanion hard rules
 - Do not add a backend, cloud database, cloud storage, cloud AI, analytics, crash SDK, ads, account system,
   paid API or any network call. V1 has no INTERNET permission; CI fails if the APK requests it.
-- AI/model output is untrusted data. It may only produce `task-extraction/v1` JSON, which is schema-validated
+- AI/model output is untrusted data. It may only produce `task-extraction/v2` JSON, which is schema-validated
   and domain-validated (`TaskExtractionValidator`) before use. Unknown fields invalidate the whole output.
 - Every effect goes through `AgentOrchestrator.execute`: tool allowlist (`ToolRegistry`) → argument validation →
   `ToolAuthorizationPolicy` → Android permission → tool → verification → audit. Never call a repository write

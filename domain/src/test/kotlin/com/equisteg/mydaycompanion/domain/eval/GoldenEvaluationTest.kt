@@ -26,6 +26,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import java.io.File
 import java.time.Clock
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneOffset
 import kotlin.test.Test
 import kotlin.test.assertTrue
@@ -46,7 +47,7 @@ class GoldenEvaluationTest {
 
     @Test
     fun `golden task-extraction dataset meets thresholds`() = runTest {
-        val root = Json.parseToJsonElement(File(dataDir, "golden/task-extraction.v1.json").readText()).jsonObject
+        val root = Json.parseToJsonElement(File(dataDir, "golden/task-extraction.v2.json").readText()).jsonObject
         val today = LocalDate.parse(root.getValue("today").jsonPrimitive.content)
         val thresholds = root.getValue("thresholds").jsonObject
         val structured = Tally(); val extraction = Tally(); val plans = Tally(); val unsafe = Tally()
@@ -59,7 +60,7 @@ class GoldenEvaluationTest {
             val g = TestGraph(clock = Clock.fixed(today.atTime(7, 0).toInstant(ZoneOffset.UTC), ZoneOffset.UTC))
 
             if (input.isNotBlank()) {
-                val raw = g.rules.generate(ContextBuilder().taskExtraction(input, today, emptyList()))
+                val raw = g.rules.generate(ContextBuilder().taskExtraction(input, today, emptyList(), LocalTime.of(7, 0)))
                 val ok = raw is AiResult.Success && TaskExtractionValidator.validate(raw.text, today) is ValidationOutcome.Valid
                 structured.record(id, ok)
             }
@@ -103,6 +104,13 @@ class GoldenEvaluationTest {
             expect["durations"]?.let { e -> if (e.jsonArray.map { it.jsonPrimitive.int } != x?.tasks?.map { it.durationMinutes }) errors += "durations=${x?.tasks?.map { it.durationMinutes }}" }
             expect["priorities"]?.let { e -> if (e.jsonArray.map { it.jsonPrimitive.content } != x?.tasks?.map { it.priority.name }) errors += "priorities" }
             expect["deadlines"]?.let { e -> if (e.jsonArray.map { it.jsonPrimitive.content } != x?.tasks?.map { it.deadline.toString() }) errors += "deadlines=${x?.tasks?.map { it.deadline }}" }
+            fun strings(key: String) = expect[key]?.jsonArray?.map { it.jsonPrimitive.content }
+            strings("eventTitles")?.let { want -> val got = x?.fixedEvents?.map { it.title }; if (want != got) errors += "eventTitles=$got" }
+            expect["eventDurations"]?.let { e -> val got = x?.fixedEvents?.map { it.durationMinutes }; if (e.jsonArray.map { it.jsonPrimitive.int } != got) errors += "eventDurations=$got" }
+            strings("eventDates")?.let { want -> val got = x?.fixedEvents?.map { it.date.toString() }; if (want != got) errors += "eventDates=$got" }
+            strings("taskDates")?.let { want -> val got = x?.tasks?.map { it.date.toString() }; if (want != got) errors += "taskDates=$got" }
+            strings("preferredStarts")?.let { want -> val got = x?.tasks?.map { it.preferredStart.toString() }; if (want != got) errors += "preferredStarts=$got" }
+            strings("repeats")?.let { want -> val got = x?.tasks?.map { it.repeat?.name.toString() }; if (want != got) errors += "repeats=$got" }
             expect["minWarnings"]?.let { if ((x?.warnings?.size ?: (if (proposal is AgentProposal.NotUnderstood) 1 else 0)) < it.jsonPrimitive.int) errors += "warnings" }
             expect["maxTasks"]?.let { if ((x?.tasks?.size ?: 0) > it.jsonPrimitive.int) errors += "too many tasks" }
             expect["planIssue"]?.let { e ->
@@ -113,7 +121,7 @@ class GoldenEvaluationTest {
         }
 
         val report = buildString {
-            appendLine("# AI evaluation: task-extraction v1")
+            appendLine("# AI evaluation: task-extraction v2")
             appendLine("| metric | result | threshold |")
             appendLine("|---|---|---|")
             fun row(name: String, t: Tally, key: String) = appendLine("| $name | ${t.pass}/${t.total} (${"%.2f".format(t.rate)}) | ${thresholds.getValue(key).jsonPrimitive.double} |")

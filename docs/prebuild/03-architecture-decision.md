@@ -9,7 +9,7 @@ Sources: master §6, §12–§20, §36–§37; spec §4, §9–§16.
 | AR-03 | Room/SQLite | PASS | `data/.../db/MdcDatabase.kt`, Room 2.7.2. |
 | AR-04 | Encryption design (Keystore-backed) | PASS | SQLCipher DB; 32-byte random passphrase wrapped with AES-256-GCM key in AndroidKeyStore, stored in `noBackupFilesDir` (`KeystoreDatabaseKeyProvider`). |
 | AR-05 | AI provider abstraction | PASS | `AiModelProvider`, `AiInferenceRouter`, `ContextBuilder`, `PromptRegistry`, `TaskExtractionValidator`. |
-| AR-06 | Agent/tool boundary | PASS | `AgentOrchestrator`, `AgentTool`, `ToolRegistry`; model output can only be `task-extraction/v1` data. |
+| AR-06 | Agent/tool boundary | PASS | `AgentOrchestrator`, `AgentTool`, `ToolRegistry`; model output can only be `task-extraction/v2` data. |
 | AR-07 | Permission policy | PASS | `ToolAuthorizationPolicy` + `AndroidPermissionChecker`. See 06. |
 | AR-08 | Planner architecture | PASS | `DeterministicPlanner` + independent `PlanValidator`. AI may only suggest durations/priorities. |
 | AR-09 | Scheduler | PASS (Phase 1 impl) | `NotificationScheduler` interface; Phase 1: AlarmManager inexact window alarms + boot re-registration; no exact-alarm permission. |

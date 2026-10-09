@@ -1,5 +1,18 @@
 # Progress
 
+## 2026-10-09 — Agent OS build document and text/time understanding v2
+
+- Founder phone test: the app did not understand normal or jumbled text and many features were switched off.
+- Wrote `docs/product/MYDAYCOMPANION_AGENT_OS_BUILD.md` (top of the precedence list): personal agent OS scope with every
+  feature shipping now, approvals with device security and challenge questions, encrypted backup for new phones,
+  theft protection, and an infrastructure table with a cost for each item (default ₹0). Founder decisions D-01..D-09
+  added to `docs/prebuild/12-open-questions.md`.
+- PR 1 (this change): new on-device readers for dates, times and durations (`domain/ai/text/*`), smarter splitting,
+  schema `task-extraction/v2`, extractor `rule-extractor/2`, prompt v2, planner v2 (preferred start), multi-day
+  proposals in the UI, Room schema v2 (`tasks.preferredStart`). Golden set v2: 75 cases, 100% on all four metrics.
+- Next PRs, in order: delete-key fix + approvals + app lock; task edit/settings/onboarding; reminders + routines;
+  voice + calendar + device actions; memory review + backup/restore + theft-protection settings.
+
 ## 2026-10-06 — Precheck and Phase 0 foundation
 
 - Renamed product from MyDayGuide to MyDayCompanion across all documents.

@@ -12,6 +12,8 @@ enum class TaskStatus { OPEN, DONE, CANCELLED }
 /**
  * A unit of work the user wants to do. [parentId] links a subtask to its parent task.
  * [date] is the day the user wants to do it on (null = unscheduled backlog).
+ * [preferredStart] is a soft time ("in the morning", "after 6"): the planner places the task at
+ * or after it when there is room, and anywhere in the day otherwise.
  */
 data class Task(
     val id: String,
@@ -24,6 +26,7 @@ data class Task(
     val parentId: String? = null,
     val createdAt: Instant,
     val updatedAt: Instant = createdAt,
+    val preferredStart: LocalTime? = null,
 ) {
     companion object {
         const val DEFAULT_DURATION_MINUTES = 30

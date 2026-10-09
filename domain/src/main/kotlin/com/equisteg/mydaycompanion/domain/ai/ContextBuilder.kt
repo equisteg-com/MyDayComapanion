@@ -5,6 +5,8 @@ import com.equisteg.mydaycompanion.domain.memory.MemorySensitivity
 import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
 import com.equisteg.mydaycompanion.domain.safety.InputNormalizer
 import java.time.LocalDate
+import java.time.LocalTime
+import java.time.temporal.ChronoUnit
 
 /**
  * Builds the minimal context a model needs. Sensitive memories are never included, only active
@@ -13,7 +15,7 @@ import java.time.LocalDate
 class ContextBuilder(
     private val maxMemories: Int = 10,
 ) {
-    fun taskExtraction(userText: String, today: LocalDate, memories: List<MemoryItem>): AiRequest {
+    fun taskExtraction(userText: String, today: LocalDate, memories: List<MemoryItem>, now: LocalTime? = null): AiRequest {
         val prompt = PromptRegistry.TASK_EXTRACTION
         val usable = memories
             .filter { it.status == MemoryStatus.ACTIVE && it.deletedAt == null && it.sensitivity != MemorySensitivity.SENSITIVE }
@@ -26,6 +28,7 @@ class ContextBuilder(
             untrustedInput = InputNormalizer.normalize(userText),
             context = buildMap {
                 put("today", today.toString())
+                if (now != null) put("now", now.truncatedTo(ChronoUnit.MINUTES).toString())
                 if (usable.isNotEmpty()) put("preferences", usable.joinToString("\n") { "- " + it.content })
             },
         )

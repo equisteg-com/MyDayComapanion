@@ -12,12 +12,14 @@ import java.time.LocalTime
 /**
  * First-fit scheduler over the free time left between fixed events.
  *
- * Ordering: tasks with a deadline on the plan day first (earliest deadline first), then by
- * priority (high first), then by the order the user gave them. Tasks that do not fit are reported
- * as unscheduled rather than silently squeezed in; fixed events are never moved.
+ * Ordering: tasks with a deadline on the plan day first (earliest deadline first), then tasks
+ * with a preferred start (earliest first), then by priority (high first), then by the order the
+ * user gave them. A task with a preferred start goes at or after that time when it fits there,
+ * otherwise into the first gap that fits. Tasks that do not fit are reported as unscheduled
+ * rather than silently squeezed in; fixed events are never moved.
  */
 class DeterministicPlanner : PlannerEngine {
-    override val version: String = "deterministic-planner/1"
+    override val version: String = "deterministic-planner/2"
 
     override fun plan(request: PlanRequest): DayPlan {
         val issues = mutableListOf<PlanIssue>()
@@ -53,6 +55,7 @@ class DeterministicPlanner : PlannerEngine {
                 compareBy<IndexedValue<Task>>(
                     { if (it.value.deadline?.toLocalDate() == request.date) 0 else 1 },
                     { it.value.deadline?.takeIf { d -> d.toLocalDate() == request.date }?.toLocalTime() ?: LocalTime.MAX },
+                    { it.value.preferredStart ?: LocalTime.MAX },
                     { -it.value.priority.weight },
                     { it.index },
                 ),
@@ -61,14 +64,16 @@ class DeterministicPlanner : PlannerEngine {
 
         for (task in candidates) {
             val duration = task.durationMinutes.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
-            val slotIndex = free.indexOfFirst { it.last - it.first >= duration }
+            val preferred = task.preferredStart?.toMinuteOfDay()
+            var slotIndex = if (preferred == null) -1 else free.indexOfFirst { maxOf(it.first, preferred) + duration <= it.last }
+            if (slotIndex < 0) slotIndex = free.indexOfFirst { it.last - it.first >= duration }
             if (slotIndex < 0) {
                 unscheduled += task.id
                 issues += PlanIssue(PlanIssueType.OVERLOADED, task.id, "Not enough free time left in the day for this task.")
                 continue
             }
             val slot = free[slotIndex]
-            val start = slot.first
+            val start = if (preferred != null && maxOf(slot.first, preferred) + duration <= slot.last) maxOf(slot.first, preferred) else slot.first
             val end = start + duration
             taskBlocks += PlanBlock(task.id, task.title, BlockKind.TASK, start.toLocalTime(), end.toLocalTime())
 
@@ -78,8 +83,14 @@ class DeterministicPlanner : PlannerEngine {
             }
 
             val nextStart = end + request.bufferMinutes
+            val before = slot.first..(start - request.bufferMinutes)
+            val remaining = listOfNotNull(
+                before.takeIf { start > slot.first && it.last > it.first },
+                (nextStart..slot.last).takeIf { nextStart < slot.last },
+            )
             free = free.toMutableList().also {
-                if (nextStart < slot.last) it[slotIndex] = nextStart..slot.last else it.removeAt(slotIndex)
+                it.removeAt(slotIndex)
+                it.addAll(slotIndex, remaining)
             }
         }
 

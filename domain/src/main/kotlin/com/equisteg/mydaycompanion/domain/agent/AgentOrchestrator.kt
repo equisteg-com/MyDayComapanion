@@ -4,6 +4,8 @@ import com.equisteg.mydaycompanion.domain.ai.AiResult
 import com.equisteg.mydaycompanion.domain.ai.AiInferenceRouter
 import com.equisteg.mydaycompanion.domain.ai.ContextBuilder
 import com.equisteg.mydaycompanion.domain.ai.DeviceStateProvider
+import com.equisteg.mydaycompanion.domain.ai.ExtractedEvent
+import com.equisteg.mydaycompanion.domain.ai.ExtractedTask
 import com.equisteg.mydaycompanion.domain.ai.TaskExtraction
 import com.equisteg.mydaycompanion.domain.ai.TaskExtractionValidator
 import com.equisteg.mydaycompanion.domain.ai.ValidationOutcome
@@ -53,12 +55,15 @@ sealed interface AgentProposal {
 
     data class Ready(
         val extraction: TaskExtraction,
-        /** Preview only; nothing is saved until the actions run. */
-        val previewPlan: DayPlan,
+        /** Preview only, one per day the message touches, in date order; nothing is saved until the actions run. */
+        val previewPlans: List<DayPlan>,
         val actions: List<ProposedAction>,
         val providerId: String,
         val warnings: List<String>,
-    ) : AgentProposal
+    ) : AgentProposal {
+        /** The plan for the first day in the proposal. */
+        val previewPlan: DayPlan get() = previewPlans.first()
+    }
 }
 
 sealed interface ExecutionResult {
@@ -92,7 +97,7 @@ class AgentOrchestrator(
         val text = InputNormalizer.normalize(userText)
         if (text.isEmpty()) return AgentProposal.Empty
         val today = LocalDate.now(clock)
-        val request = contextBuilder.taskExtraction(text, today, memories.all())
+        val request = contextBuilder.taskExtraction(text, today, memories.all(), LocalTime.now(clock))
         val route = router.route(request, deviceState.current())
 
         var providerId = route.provider.id
@@ -110,53 +115,65 @@ class AgentOrchestrator(
             return AgentProposal.NotUnderstood(extraction.warnings.firstOrNull() ?: "I didn't find any tasks in that.")
         }
 
-        val preview = previewPlan(extraction)
-        val createArgs = JsonObject(
-            mapOf(
-                "date" to JsonPrimitive(extraction.targetDate.toString()),
-                "tasks" to JsonArray(
-                    extraction.tasks.map {
-                        JsonObject(
-                            mapOf(
-                                "title" to JsonPrimitive(it.title),
-                                "priority" to JsonPrimitive(it.priority.name),
-                                "durationMinutes" to JsonPrimitive(it.durationMinutes),
-                                "deadline" to (it.deadline?.let { d -> JsonPrimitive(d.toString()) } ?: JsonNull),
-                            ),
-                        )
-                    },
-                ),
-                "fixedEvents" to JsonArray(
-                    extraction.fixedEvents.map {
-                        JsonObject(
-                            mapOf(
-                                "title" to JsonPrimitive(it.title),
-                                "start" to JsonPrimitive(it.start.toString()),
-                                "durationMinutes" to JsonPrimitive(it.durationMinutes),
-                            ),
-                        )
-                    },
-                ),
-            ),
-        )
-        val planArgs = JsonObject(
-            buildMap {
-                put("date", JsonPrimitive(extraction.targetDate.toString()))
-                notBefore(extraction.targetDate)?.let { put("notBefore", JsonPrimitive(it.toString())) }
-            },
-        )
+        val dates = extraction.dates
+        val previews = dates.map { previewPlan(extraction, it) }
+        val actions = dates.flatMap { date ->
+            val dayTasks = extraction.tasks.filter { it.date == date }
+            val dayEvents = extraction.fixedEvents.filter { it.date == date }
+            listOf(ProposedAction("tasks.create", createArgs(date, dayTasks, dayEvents)), ProposedAction("plan.generate", planArgs(date)))
+        }
+        val warnings = extraction.warnings + extraction.tasks.filter { it.repeat != null }.map {
+            "\"${it.title}\" repeats (${it.repeat!!.name.lowercase()}). I'll add the first one now; repeating items are switched on with routines."
+        }
         record(
             AuditActor.AGENT, "ai.extract", null, AuditDecision.NOT_APPLICABLE, AuditOutcome.SUCCESS, null,
             "provider=$providerId tasks=${extraction.tasks.size} events=${extraction.fixedEvents.size}",
         )
         return AgentProposal.Ready(
             extraction = extraction,
-            previewPlan = preview,
-            actions = listOf(ProposedAction("tasks.create", createArgs), ProposedAction("plan.generate", planArgs)),
+            previewPlans = previews,
+            actions = actions,
             providerId = providerId,
-            warnings = extraction.warnings,
+            warnings = warnings,
         )
     }
+
+    private fun createArgs(date: LocalDate, dayTasks: List<ExtractedTask>, dayEvents: List<ExtractedEvent>) = JsonObject(
+        mapOf(
+            "date" to JsonPrimitive(date.toString()),
+            "tasks" to JsonArray(
+                dayTasks.map {
+                    JsonObject(
+                        buildMap {
+                            put("title", JsonPrimitive(it.title))
+                            put("priority", JsonPrimitive(it.priority.name))
+                            put("durationMinutes", JsonPrimitive(it.durationMinutes))
+                            put("deadline", it.deadline?.let { d -> JsonPrimitive(d.toString()) } ?: JsonNull)
+                            it.preferredStart?.let { p -> put("preferredStart", JsonPrimitive(p.toString())) }
+                        },
+                    )
+                },
+            ),
+            "fixedEvents" to JsonArray(
+                dayEvents.map {
+                    JsonObject(
+                        mapOf(
+                            "title" to JsonPrimitive(it.title),
+                            "start" to JsonPrimitive(it.start.toString()),
+                            "durationMinutes" to JsonPrimitive(it.durationMinutes),
+                        ),
+                    )
+                },
+            ),
+        ),
+    )
+
+    private fun planArgs(date: LocalDate) = JsonObject(
+        buildMap {
+            put("date", JsonPrimitive(date.toString()))
+            notBefore(date)?.let { put("notBefore", JsonPrimitive(it.toString())) }
+        },
+    )
 
     /** Fingerprint the UI must echo back in a [UserConfirmation] after the user approves [action]. */
     fun fingerprint(action: ProposedAction): String = ToolAuthorizationPolicy.fingerprint(action.toolId, action.args.canonical())
@@ -235,15 +252,17 @@ class AgentOrchestrator(
         }
     }
 
-    private suspend fun previewPlan(extraction: TaskExtraction): DayPlan {
-        val date = extraction.targetDate
+    private suspend fun previewPlan(extraction: TaskExtraction, date: LocalDate): DayPlan {
         val now = clock.instant()
         val prefs = preferences.get()
         val existingTasks = tasks.all().filter { it.date == date }
-        val newTasks = extraction.tasks.map {
-            Task(ids.newId(), it.title, it.priority, it.durationMinutes, date, it.deadline?.let { d -> date.atTime(d) }, createdAt = now)
+        val newTasks = extraction.tasks.filter { it.date == date }.map {
+            Task(
+                ids.newId(), it.title, it.priority, it.durationMinutes, date, it.deadline?.let { d -> date.atTime(d) },
+                createdAt = now, preferredStart = it.preferredStart,
+            )
         }
-        val newEvents = extraction.fixedEvents.map { FixedEvent(ids.newId(), it.title, date, it.start, it.durationMinutes) }
+        val newEvents = extraction.fixedEvents.filter { it.date == date }.map { FixedEvent(ids.newId(), it.title, date, it.start, it.durationMinutes) }
         val request = PlanRequest(
             date = date,
             tasks = existingTasks + newTasks,

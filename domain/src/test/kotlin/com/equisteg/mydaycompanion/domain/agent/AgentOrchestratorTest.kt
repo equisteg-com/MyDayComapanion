@@ -79,4 +79,40 @@ class AgentOrchestratorTest {
         assertEquals(LocalTime.of(9, 0), p.previewPlan.blocks.first().start)
         assertTrue(p.actions[1].args.containsKey("notBefore"))
     }
+
+    @Test
+    fun `one message can plan several days, each with its own confirmation and plan`() = runTest {
+        val g = TestGraph()
+        val proposal = g.orchestrator.propose("today finish report, tomorrow call Raj at 10, friday dentist at 4:30pm")
+        assertIs<AgentProposal.Ready>(proposal)
+        val days = listOf(LocalDate.of(2026, 10, 6), LocalDate.of(2026, 10, 7), LocalDate.of(2026, 10, 9))
+        assertEquals(days, proposal.previewPlans.map { it.date })
+        assertEquals(listOf("tasks.create", "plan.generate").let { it + it + it }, proposal.actions.map { it.toolId })
+
+        for (action in proposal.actions) {
+            val first = g.orchestrator.execute(action, Requester.AGENT)
+            val result = if (first is ExecutionResult.NeedsConfirmation) {
+                g.orchestrator.execute(action, Requester.AGENT, UserConfirmation(first.actionFingerprint))
+            } else {
+                first
+            }
+            assertIs<ExecutionResult.Done>(result)
+        }
+        assertEquals(LocalTime.of(10, 0), g.plans.get(days[1])!!.blocks.single().start)
+        assertEquals(LocalTime.of(16, 30), g.plans.get(days[2])!!.blocks.single().start)
+        assertEquals("Finish report", g.plans.get(days[0])!!.blocks.single().title)
+    }
+
+    @Test
+    fun `soft times reach the saved task and the plan`() = runTest {
+        val g = TestGraph()
+        val proposal = g.orchestrator.propose("tomorrow walk the dog in the evening and finish the report")
+        assertIs<AgentProposal.Ready>(proposal)
+        val walk = proposal.previewPlan.blocks.first { it.title == "Walk the dog" }
+        assertEquals(LocalTime.of(18, 0), walk.start)
+        val create = proposal.actions[0]
+        val fp = (g.orchestrator.execute(create, Requester.AGENT) as ExecutionResult.NeedsConfirmation).actionFingerprint
+        g.orchestrator.execute(create, Requester.AGENT, UserConfirmation(fp))
+        assertEquals(LocalTime.of(18, 0), g.tasks.all().first { it.title == "Walk the dog" }.preferredStart)
+    }
 }

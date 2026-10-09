@@ -161,11 +161,12 @@ class RoomPreferencesStore(db: MdcDatabase) : PreferencesStore {
 
 private fun TaskEntity.toDomain() = Task(
     id, title, Priority.valueOf(priority), durationMinutes, date?.let(LocalDate::parse), deadline?.let(LocalDateTime::parse),
-    TaskStatus.valueOf(status), parentId, Instant.parse(createdAt), Instant.parse(updatedAt),
+    TaskStatus.valueOf(status), parentId, Instant.parse(createdAt), Instant.parse(updatedAt), preferredStart?.let(LocalTime::parse),
 )
 
 private fun Task.toEntity() = TaskEntity(
     id, title, priority.name, durationMinutes, date?.toString(), deadline?.toString(), status.name, parentId, createdAt.toString(), updatedAt.toString(),
+    preferredStart?.toString(),
 )
 
 private fun FixedEventEntity.toDomain() = FixedEvent(id, title, LocalDate.parse(date), LocalTime.parse(start), durationMinutes, EventSource.valueOf(source))

@@ -93,4 +93,27 @@ class DeterministicPlannerTest {
         assertTrue(PlanValidator.validate(moved, req).isNotEmpty())
         assertTrue(PlanValidator.validate(overlapping, req).isNotEmpty())
     }
+
+    @Test
+    fun `a preferred start places the task at that time when free, and earlier work still fills the morning`() {
+        val evening = task("walk", 30).copy(preferredStart = LocalTime.of(18, 0))
+        val busyAtSix = task("run", 60).copy(preferredStart = LocalTime.of(11, 30))
+        val req = request(listOf(task("report", 60), evening, busyAtSix), listOf(meeting("meeting", LocalTime.of(11, 0))))
+        val plan = planner.plan(req)
+
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+        val byId = plan.blocks.associateBy { it.refId }
+        assertEquals(LocalTime.of(18, 0), byId.getValue("walk").start)
+        assertEquals(LocalTime.of(12, 0), byId.getValue("run").start, "the meeting runs to 12:00, so the run starts right after it")
+        assertEquals(LocalTime.of(9, 0), byId.getValue("report").start)
+    }
+
+    @Test
+    fun `a preferred start that cannot fit falls back to the first free gap`() {
+        val late = task("late", 120).copy(preferredStart = LocalTime.of(20, 0))
+        val req = request(listOf(late))
+        val plan = planner.plan(req)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+        assertEquals(LocalTime.of(9, 0), plan.blocks.single().start)
+    }
 }

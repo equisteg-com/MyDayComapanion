@@ -50,7 +50,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 value = state.input,
                 onValueChange = viewModel::onInputChange,
                 modifier = Modifier.fillMaxWidth().testTag("input"),
-                placeholder = { Text("Tomorrow I need to finish the proposal, call Raj, and I have a meeting at 11") },
+                placeholder = { Text("tmrw gym 6am, call Raj around 4ish, dentist fri 3-4pm, finish report by eod") },
                 minLines = 2,
             )
             Button(
@@ -65,11 +65,16 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             item {
                 Card(Modifier.fillMaxWidth().testTag("proposal")) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Proposed plan for ${proposal.previewPlan.date.format(dayFormat)}", style = MaterialTheme.typography.titleMedium)
-                        PlanBlocks(proposal.previewPlan, statusById = emptyMap(), onToggle = null, tag = "preview-${proposal.previewPlan.date}")
+                        proposal.previewPlans.forEach { preview ->
+                            Text("Proposed plan for ${preview.date.format(dayFormat)}", style = MaterialTheme.typography.titleMedium)
+                            PlanBlocks(preview, statusById = emptyMap(), onToggle = null, tag = "preview-${preview.date}")
+                        }
+                        proposal.warnings.forEach { Text("ℹ $it", style = MaterialTheme.typography.bodySmall) }
                         Text("Nothing is saved until you confirm.", style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = viewModel::onAcceptProposal, enabled = !state.busy, modifier = Modifier.testTag("accept")) { Text("Add to my day") }
+                            Button(onClick = viewModel::onAcceptProposal, enabled = !state.busy, modifier = Modifier.testTag("accept")) {
+                                Text(if (proposal.previewPlans.size > 1) "Add to my days" else "Add to my day")
+                            }
                             OutlinedButton(onClick = viewModel::onDiscardProposal) { Text("Discard") }
                         }
                     }

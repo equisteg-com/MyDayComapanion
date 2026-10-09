@@ -43,7 +43,7 @@ private fun validDuration(d: Int?): Boolean = d != null && d in Task.MIN_DURATIO
 
 /**
  * tasks.create — stores tasks and fixed events for one day.
- * Args: {"date":"YYYY-MM-DD","tasks":[{"title","priority","durationMinutes","deadline"?}],"fixedEvents":[{"title","start","durationMinutes"}]}
+ * Args: {"date":"YYYY-MM-DD","tasks":[{"title","priority","durationMinutes","deadline"?,"preferredStart"?}],"fixedEvents":[{"title","start","durationMinutes"}]}
  */
 class CreateTasksTool(
     private val tasks: TaskRepository,
@@ -68,12 +68,14 @@ class CreateTasksTool(
         if (ts.size + es.size == 0 || ts.size > 25 || es.size > 15) return ArgsValidation.Rejected("size")
         for (e in ts) {
             val o = e.asObject() ?: return ArgsValidation.Rejected("task")
-            if (!o.onlyKeys("title", "priority", "durationMinutes", "deadline")) return ArgsValidation.Rejected("task keys")
+            if (!o.onlyKeys("title", "priority", "durationMinutes", "deadline", "preferredStart")) return ArgsValidation.Rejected("task keys")
             if (!validTitle(o.string("title"))) return ArgsValidation.Rejected("task title")
             if (Priority.entries.none { it.name == o.string("priority") }) return ArgsValidation.Rejected("task priority")
             if (!validDuration(o.int("durationMinutes"))) return ArgsValidation.Rejected("task duration")
             val dl = o.optionalString("deadline").getOrElse { return ArgsValidation.Rejected("task deadline") }
             if (dl != null && parseTime(dl) == null) return ArgsValidation.Rejected("task deadline")
+            val ps = o.optionalString("preferredStart").getOrElse { return ArgsValidation.Rejected("task preferredStart") }
+            if (ps != null && parseTime(ps) == null) return ArgsValidation.Rejected("task preferredStart")
         }
         for (e in es) {
             val o = e.asObject() ?: return ArgsValidation.Rejected("event")
@@ -97,6 +99,7 @@ class CreateTasksTool(
                 date = date,
                 deadline = parseTime(o.optionalString("deadline").getOrNull())?.let { date.atTime(it) },
                 createdAt = now,
+                preferredStart = parseTime(o.optionalString("preferredStart").getOrNull()),
             )
         }
         val newEvents = args.array("fixedEvents")!!.map { it.asObject()!! }.map { o ->

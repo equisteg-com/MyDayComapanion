@@ -59,7 +59,7 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
 
     fun onSubmit() = launchBusy {
         when (val p = services.orchestrator.propose(_state.value.input)) {
-            is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = p.warnings.firstOrNull()) }
+            is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = null) }
             is AgentProposal.NotUnderstood -> _state.update { it.copy(message = p.reason) }
             AgentProposal.Empty -> Unit
         }
@@ -77,8 +77,9 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
                 return@launchBusy
             }
         }
-        selectDate(proposal.extraction.targetDate)
-        _state.update { it.copy(proposal = null, input = "", message = "Added to your day.") }
+        selectDate(proposal.previewPlans.first().date)
+        val days = proposal.previewPlans.size
+        _state.update { it.copy(proposal = null, input = "", message = if (days > 1) "Added to $days days." else "Added to your day.") }
     }
 
     fun onCompleteTask(taskId: String) = launchBusy {

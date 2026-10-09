@@ -59,6 +59,21 @@ class MagicMomentUiTest {
         assertEquals(4, runBlocking { graph.tasks.count() })
     }
 
+    @Test
+    fun `messy text over several days is understood and saved to each day`() {
+        compose.setContent { AppNavigation(viewModel) }
+
+        compose.onNodeWithTag("input").performTextInput("today finish report, tmrw call Raj 10am, fri dentist 4:30pm")
+        compose.onNodeWithTag("submit").performClick()
+        waitFor("proposal") { compose.onAllNodes(hasTestTag("proposal")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("preview-2026-10-07").assertExists()
+        compose.onNodeWithTag("preview-2026-10-09").assertExists()
+
+        compose.onNodeWithTag("accept").performClick()
+        waitFor("saved message") { viewModel.state.value.message == "Added to 3 days." }
+        assertEquals(3, runBlocking { graph.plans.count() })
+    }
+
     /** Like waitUntil, but a timeout reports what the screen and view model actually held. */
     private fun waitFor(what: String, condition: () -> Boolean) {
         try {

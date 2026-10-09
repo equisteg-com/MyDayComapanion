@@ -49,6 +49,7 @@ class DataExportService(
                 "durationMinutes" to it.durationMinutes.toString(), "date" to it.date?.toString(),
                 "deadline" to it.deadline?.toString(), "status" to it.status.name, "parentId" to it.parentId,
                 "createdAt" to it.createdAt.toString(), "updatedAt" to it.updatedAt.toString(),
+                "preferredStart" to it.preferredStart?.toString(),
             )
         },
         fixedEvents = events.all().map {
