@@ -150,7 +150,8 @@ class RoomStorageTest {
         assertEquals(1, export.routines.size)
         assertEquals(1, export.memories.size)
         assertEquals(1, export.auditLog.size)
-        assertEquals(3, export.plans.size)
+        // t1 is broken into the step t2, so the plan holds t2 and the meeting, not t1 (planner v3).
+        assertEquals(2, export.plans.size)
         assertEquals("08:00", export.preferences["dayStart"])
     }
 
