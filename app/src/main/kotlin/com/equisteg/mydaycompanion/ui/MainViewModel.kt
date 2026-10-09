@@ -13,6 +13,15 @@ import com.equisteg.mydaycompanion.domain.model.DayPlan
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
+import com.equisteg.mydaycompanion.domain.security.ApprovalRules
+import com.equisteg.mydaycompanion.domain.security.ApprovalStep
+import com.equisteg.mydaycompanion.domain.security.ChallengeGate
+import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
+import com.equisteg.mydaycompanion.domain.security.ChallengeResult
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
+import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -22,14 +31,35 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.time.Duration
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
 
-/** A privileged action waiting for the user to tap Confirm in a dialog. */
-data class PendingConfirmation(val action: ProposedAction, val fingerprint: String, val title: String, val body: String)
+/**
+ * A privileged action waiting for the owner. [steps] are the approval steps still to complete, in
+ * order (build doc §6.1): a tap on Confirm, then the device credential, then a challenge answer.
+ */
+data class PendingConfirmation(
+    val action: ProposedAction,
+    val fingerprint: String,
+    val title: String,
+    val body: String,
+    val steps: List<ApprovalStep> = listOf(ApprovalStep.TAP),
+)
+
+enum class AuthPurpose { UNLOCK, APPROVE }
+
+/** Asks the activity to show the system fingerprint/face/PIN prompt. */
+data class AuthRequest(val purpose: AuthPurpose, val title: String, val subtitle: String)
+
+enum class AuthOutcome { SUCCEEDED, CANCELLED, UNAVAILABLE }
+
+data class ChallengePrompt(val questionId: String, val question: String, val error: String? = null)
 
 data class UiState(
     val input: String = "",
@@ -39,11 +69,20 @@ data class UiState(
     val selectedDate: LocalDate,
     val pending: PendingConfirmation? = null,
     val history: List<AuditEntry> = emptyList(),
+    /** True while the app lock screen covers everything (build doc §8). */
+    val locked: Boolean = false,
+    val authRequest: AuthRequest? = null,
+    val challenge: ChallengePrompt? = null,
+    val security: SecuritySettings = SecuritySettings(),
+    val hasChallenges: Boolean = false,
+    /** Local data and keys were destroyed; the activity restarts the app. */
+    val wiped: Boolean = false,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MainViewModel(private val services: AppServices) : ViewModel() {
-    private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock)))
+    // Starts locked so nothing shows before the security settings are read; unlocks at once when the app lock is off.
+    private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     private val selectedDate = MutableStateFlow(_state.value.selectedDate)
@@ -54,6 +93,15 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
 
     val tasks: StateFlow<List<Task>> = services.tasks.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private var backgroundedAt: Instant? = null
+
+    init {
+        viewModelScope.launch {
+            val settings = services.security.settings()
+            _state.update { it.copy(security = settings, hasChallenges = services.challenges.hasChallenges(), locked = settings.appLockEnabled) }
+        }
+    }
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, message = null) }
 
@@ -111,15 +159,195 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
         )
     }
 
+    /** The owner tapped Confirm in the dialog: move on to the next approval step. */
     fun onConfirmPending() = launchBusy {
         val pending = _state.value.pending ?: return@launchBusy
-        _state.update { it.copy(pending = null) }
-        val r = services.orchestrator.execute(pending.action, Requester.USER, UserConfirmation(pending.fingerprint))
-        _state.update { it.copy(message = describe(r)) }
-        refreshHistory()
+        advance(pending.copy(steps = pending.steps - ApprovalStep.TAP))
     }
 
-    fun onCancelPending() = _state.update { it.copy(pending = null) }
+    fun onCancelPending() = _state.update { it.copy(pending = null, authRequest = null, challenge = null) }
+
+    /** Result of the system prompt the activity showed for [UiState.authRequest]. */
+    fun onDeviceAuthResult(outcome: AuthOutcome) = launchBusy {
+        val request = _state.value.authRequest ?: return@launchBusy
+        _state.update { it.copy(authRequest = null) }
+        when (request.purpose) {
+            AuthPurpose.UNLOCK -> when (outcome) {
+                AuthOutcome.SUCCEEDED -> {
+                    services.challenges.onDeviceCredentialPassed()
+                    _state.update { it.copy(locked = false) }
+                }
+                AuthOutcome.UNAVAILABLE -> _state.update {
+                    it.copy(locked = false, message = "This phone has no screen lock, so the app lock is off. Set a screen lock in Android settings to protect your agent.")
+                }
+                AuthOutcome.CANCELLED -> Unit
+            }
+            AuthPurpose.APPROVE -> {
+                val pending = _state.value.pending ?: return@launchBusy
+                when (outcome) {
+                    AuthOutcome.SUCCEEDED -> {
+                        services.challenges.onDeviceCredentialPassed()
+                        advance(pending.copy(steps = pending.steps - ApprovalStep.DEVICE_CREDENTIAL))
+                    }
+                    AuthOutcome.CANCELLED -> _state.update { it.copy(pending = null, message = "Cancelled.") }
+                    AuthOutcome.UNAVAILABLE ->
+                        if (_state.value.hasChallenges) {
+                            val rest = pending.steps - ApprovalStep.DEVICE_CREDENTIAL
+                            advance(pending.copy(steps = if (ApprovalStep.CHALLENGE in rest) rest else rest + ApprovalStep.CHALLENGE))
+                        } else {
+                            _state.update {
+                                it.copy(pending = null, message = "Set a screen lock on this phone (or challenge questions in Privacy) to approve this.")
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    fun onChallengeAnswer(answer: String) = launchBusy {
+        val prompt = _state.value.challenge ?: return@launchBusy
+        val pending = _state.value.pending
+        val result = withContext(Dispatchers.Default) { services.challenges.answer(prompt.questionId, answer) }
+        when (result) {
+            ChallengeResult.Correct -> {
+                _state.update { it.copy(challenge = null) }
+                if (pending != null) advance(pending.copy(steps = pending.steps - ApprovalStep.CHALLENGE))
+            }
+            is ChallengeResult.Wrong -> onChallengeGate(result.gate, prompt)
+            is ChallengeResult.Blocked -> onChallengeGate(result.gate, prompt)
+        }
+    }
+
+    fun onCancelChallenge() = _state.update { it.copy(challenge = null, pending = null) }
+
+    fun onUnlockRequested() = _state.update {
+        it.copy(authRequest = AuthRequest(AuthPurpose.UNLOCK, "Unlock MyDayCompanion", "Use your fingerprint, face or screen lock"))
+    }
+
+    /** "Wipe now" from the lock screen, for a phone about to leave the owner's hands. Needs a challenge answer. */
+    fun onPanicWipe() = launchBusy {
+        if (!_state.value.hasChallenges) {
+            _state.update { it.copy(message = "Set up challenge questions first, or unlock and use Delete everything.") }
+            return@launchBusy
+        }
+        val action = ProposedAction("data.deleteAll", args("scope" to "everything"))
+        val r = services.orchestrator.execute(action, Requester.USER)
+        if (r is ExecutionResult.NeedsConfirmation) {
+            advance(PendingConfirmation(action, r.actionFingerprint, "Wipe this agent?", "", listOf(ApprovalStep.CHALLENGE)))
+        }
+    }
+
+    fun onAppBackground() {
+        // The system credential screen sends the app to the background on older Android; that is not leaving the app.
+        if (_state.value.authRequest != null) return
+        backgroundedAt = services.clock.instant()
+    }
+
+    fun onAppForeground() {
+        val since = backgroundedAt ?: return
+        backgroundedAt = null
+        val settings = _state.value.security
+        if (settings.appLockEnabled && Duration.between(since, services.clock.instant()) >= Duration.ofMinutes(settings.lockAfterMinutes.toLong())) {
+            _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null) }
+        }
+    }
+
+    fun onSecuritySettingsChange(settings: SecuritySettings) = launchBusy {
+        request(
+            ProposedAction("security.updateSettings", UpdateSecuritySettingsTool.args(settings)),
+            "Change security settings?",
+            "This changes how MyDayCompanion protects your data. You will confirm with your screen lock.",
+        )
+    }
+
+    /** Hashes the answers here so clear answers never reach the orchestrator, the fingerprint or the audit log. */
+    fun onSaveChallenges(questionsAndAnswers: List<Pair<String, String>>) = launchBusy {
+        val clean = questionsAndAnswers.map { it.first.trim() to it.second }
+        val valid = clean.size == ChallengeHasher.QUESTION_COUNT &&
+            clean.all { it.first.isNotEmpty() && it.first.length <= ChallengeHasher.MAX_QUESTION_CHARS && ChallengeHasher.isAcceptableAnswer(it.second) } &&
+            clean.map { it.first.lowercase() }.toSet().size == clean.size
+        if (!valid) {
+            _state.update { it.copy(message = "Pick three different questions and give each an answer.") }
+            return@launchBusy
+        }
+        val hashed = withContext(Dispatchers.Default) {
+            clean.mapIndexed { i, (q, a) -> ChallengeHasher.hash("q${i + 1}", q, a) }
+        }
+        request(
+            ProposedAction("security.setChallenges", SetChallengeQuestionsTool.args(hashed)),
+            if (_state.value.hasChallenges) "Change challenge questions?" else "Save challenge questions?",
+            "Answers are stored only as a one-way hash on this phone. Nobody, including Equisteg, can read them or recover them.",
+        )
+    }
+
+    fun onRemoveChallenges() = launchBusy {
+        request(
+            ProposedAction("security.setChallenges", SetChallengeQuestionsTool.args(emptyList())),
+            "Remove challenge questions?",
+            "Personal and high-risk actions will then be approved with your screen lock only.",
+        )
+    }
+
+    private suspend fun onChallengeGate(gate: ChallengeGate, prompt: ChallengePrompt) {
+        when (gate) {
+            ChallengeGate.Open -> _state.update { it.copy(challenge = prompt.copy(error = "That's not right. Try again.")) }
+            is ChallengeGate.LockedUntil -> {
+                val at = gate.until.atZone(services.clock.zone).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
+                _state.update { it.copy(challenge = null, pending = null, message = "Too many wrong answers. Try again after $at.") }
+            }
+            ChallengeGate.RequireCredential -> _state.update {
+                it.copy(challenge = null, pending = null, locked = it.security.appLockEnabled || it.locked, message = "Too many wrong answers. Unlock with your screen lock.")
+            }
+            ChallengeGate.Wipe -> wipeEverything()
+        }
+    }
+
+    /** Runs the next approval step, or the action itself once every step is done. */
+    private suspend fun advance(pending: PendingConfirmation) {
+        when (pending.steps.firstOrNull()) {
+            ApprovalStep.TAP -> _state.update { it.copy(pending = pending) }
+            ApprovalStep.DEVICE_CREDENTIAL -> _state.update {
+                it.copy(pending = pending, authRequest = AuthRequest(AuthPurpose.APPROVE, "Approve: ${pending.title.removeSuffix("?")}", "Confirm it's you"))
+            }
+            ApprovalStep.CHALLENGE -> {
+                val q = services.challenges.pickQuestion()
+                if (q == null) {
+                    advance(pending.copy(steps = pending.steps - ApprovalStep.CHALLENGE))
+                } else {
+                    when (val gate = services.challenges.gate()) {
+                        ChallengeGate.Open -> _state.update { it.copy(pending = pending, challenge = ChallengePrompt(q.id, q.question)) }
+                        else -> onChallengeGate(gate, ChallengePrompt(q.id, q.question))
+                    }
+                }
+            }
+            null -> {
+                _state.update { it.copy(pending = null, challenge = null) }
+                val r = services.orchestrator.execute(pending.action, Requester.USER, UserConfirmation(pending.fingerprint))
+                if (r is ExecutionResult.Done && pending.action.toolId == "data.deleteAll") {
+                    wipeEverything()
+                    return
+                }
+                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
+                _state.update { it.copy(message = describe(r)) }
+                refreshHistory()
+            }
+        }
+    }
+
+    /**
+     * Destroys local storage: after "Delete everything" ran and was verified through the
+     * orchestrator, or when the owner's opt-in wipe-on-failure rule fired. Deleting the database
+     * files and destroying their key leaves nothing readable, rows included.
+     */
+    private suspend fun wipeEverything() {
+        withContext(Dispatchers.IO) { services.wipeLocalStorage() }
+        _state.update { UiState(selectedDate = it.selectedDate, wiped = true, message = "Everything on this phone was deleted.") }
+    }
+
+    private suspend fun reloadSecurity() {
+        val settings = services.security.settings()
+        _state.update { it.copy(security = settings, hasChallenges = services.challenges.hasChallenges()) }
+    }
 
     fun refreshHistory() {
         viewModelScope.launch {
@@ -130,7 +358,11 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
 
     private suspend fun request(action: ProposedAction, title: String, body: String) {
         when (val r = services.orchestrator.execute(action, Requester.USER)) {
-            is ExecutionResult.NeedsConfirmation -> _state.update { it.copy(pending = PendingConfirmation(action, r.actionFingerprint, title, body)) }
+            is ExecutionResult.NeedsConfirmation -> {
+                val s = _state.value
+                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = false, settings = s.security, hasChallenges = s.hasChallenges)
+                advance(PendingConfirmation(action, r.actionFingerprint, title, body, steps))
+            }
             else -> _state.update { it.copy(message = describe(r)) }
         }
     }

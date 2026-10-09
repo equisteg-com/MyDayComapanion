@@ -24,6 +24,11 @@ android {
         unitTests.isIncludeAndroidResources = true
     }
 
+    // MigrationTestHelper reads the committed schema history from the test assets.
+    sourceSets {
+        getByName("test").assets.srcDir("$projectDir/schemas")
+    }
+
     lint {
         abortOnError = true
         warningsAsErrors = false

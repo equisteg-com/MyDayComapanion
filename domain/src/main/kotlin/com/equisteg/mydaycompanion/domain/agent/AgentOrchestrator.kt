@@ -31,6 +31,7 @@ import com.equisteg.mydaycompanion.domain.repository.TaskRepository
 import com.equisteg.mydaycompanion.domain.safety.InputNormalizer
 import com.equisteg.mydaycompanion.domain.tools.ArgsValidation
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
+import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import com.equisteg.mydaycompanion.domain.tools.ToolOutcome
 import com.equisteg.mydaycompanion.domain.tools.ToolRegistry
 import com.equisteg.mydaycompanion.domain.tools.canonical
@@ -68,7 +69,8 @@ sealed interface AgentProposal {
 
 sealed interface ExecutionResult {
     data class Done(val summary: String) : ExecutionResult
-    data class NeedsConfirmation(val actionFingerprint: String) : ExecutionResult
+    /** [riskLevel] tells the UI which approval steps to ask for (build doc §6.1). */
+    data class NeedsConfirmation(val actionFingerprint: String, val riskLevel: RiskLevel = RiskLevel.L2) : ExecutionResult
     data class Denied(val reason: String) : ExecutionResult
     data class Failed(val reason: String) : ExecutionResult
 }
@@ -202,7 +204,7 @@ class AgentOrchestrator(
             }
             is PolicyDecision.RequireConfirmation -> {
                 record(actor, auditAction, risk, AuditDecision.CONFIRMATION_REQUIRED, AuditOutcome.NOT_EXECUTED, null)
-                ExecutionResult.NeedsConfirmation(decision.actionFingerprint)
+                ExecutionResult.NeedsConfirmation(decision.actionFingerprint, risk ?: RiskLevel.L2)
             }
             PolicyDecision.Allow -> {
                 val outcome = try {

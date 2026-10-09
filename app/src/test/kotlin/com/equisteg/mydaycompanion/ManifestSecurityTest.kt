@@ -18,7 +18,7 @@ class ManifestSecurityTest {
         .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
 
     /** Permissions allowed in the current phase. Adding one requires an entry in docs/prebuild/06-permission-model.md. */
-    private val allowedPermissions = emptySet<String>()
+    private val allowedPermissions = setOf("android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT")
 
     @Test
     fun `no network permission and no unapproved permissions`() {

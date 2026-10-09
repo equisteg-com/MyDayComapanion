@@ -42,6 +42,9 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider()
+        SecuritySection(state, viewModel::onSecuritySettingsChange, viewModel::onSaveChallenges, viewModel::onRemoveChallenges)
+
+        HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
         OutlinedButton(onClick = { exportLauncher.launch("mydaycompanion-export.json") }, enabled = !state.busy) {
             Text("Export all data")
@@ -55,7 +58,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         HorizontalDivider()
         Text("Permissions", style = MaterialTheme.typography.titleMedium)
-        Text("This version asks for no permissions. Reminders (notifications), voice (microphone) and calendar reading will each ask separately when they arrive, and can be turned off here.")
+        Text("This version asks for no runtime permissions. It uses the system fingerprint, face or screen-lock prompt to confirm it's you; it never sees your fingerprint. Reminders (notifications), voice (microphone) and calendar reading will each ask separately when they arrive, and can be turned off here.")
 
         HorizontalDivider()
         Text("Features", style = MaterialTheme.typography.titleMedium)

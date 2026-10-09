@@ -10,6 +10,7 @@ import com.equisteg.mydaycompanion.data.repository.RoomMemoryStore
 import com.equisteg.mydaycompanion.data.repository.RoomPlanRepository
 import com.equisteg.mydaycompanion.data.repository.RoomPreferencesStore
 import com.equisteg.mydaycompanion.data.repository.RoomRoutineRepository
+import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
 import com.equisteg.mydaycompanion.domain.audit.AuditActor
 import com.equisteg.mydaycompanion.domain.audit.AuditDecision
@@ -31,6 +32,9 @@ import com.equisteg.mydaycompanion.domain.planner.DeterministicPlanner
 import com.equisteg.mydaycompanion.domain.planner.PlanRequest
 import com.equisteg.mydaycompanion.domain.privacy.DataDeletionService
 import com.equisteg.mydaycompanion.domain.privacy.DataExportService
+import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
+import com.equisteg.mydaycompanion.domain.security.PersonalApproval
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -81,6 +85,11 @@ class RoomStorageTest {
         RoomMemoryStore(db).upsert(MemoryItem("m1", MemoryType.PREFERENCE, "Likes mornings", MemorySource.USER_EXPLICIT, 1.0, MemoryStatus.ACTIVE, MemorySensitivity.LOW, Retention.UNTIL_DELETED, createdAt = now, updatedAt = now))
         RoomAuditLog(db).record(AuditEntry("a1", now, AuditActor.USER, "tasks.create", RiskLevel.L2, AuditDecision.ALLOWED, AuditOutcome.SUCCESS))
         RoomPreferencesStore(db).set(UserPreferences(dayStart = LocalTime.of(8, 0)))
+        RoomSecurityStore(db).apply {
+            saveSettings(SecuritySettings(lockAfterMinutes = 1, wipeOnRepeatedFailure = true, personalApproval = PersonalApproval.CHALLENGE))
+            replaceChallenges(listOf(ChallengeHasher.hash("q1", "First school?", "St Mary's")))
+            recordFailure(now)
+        }
         val tasks = RoomTaskRepository(db).all()
         val plan = DeterministicPlanner().plan(PlanRequest(date, tasks, RoomFixedEventRepository(db).forDate(date)))
         RoomPlanRepository(db).save(plan)
@@ -99,11 +108,22 @@ class RoomStorageTest {
     }
 
     @Test
+    fun `security settings, hashed answers and failures round trip`() = runTest {
+        seed()
+        val store = RoomSecurityStore(db)
+        assertEquals(SecuritySettings(lockAfterMinutes = 1, wipeOnRepeatedFailure = true, personalApproval = PersonalApproval.CHALLENGE), store.settings())
+        assertTrue(ChallengeHasher.matches(store.challenges().single(), "st marys"))
+        assertEquals(listOf(now), store.failures())
+        store.clearFailures()
+        assertEquals(2, store.count())
+    }
+
+    @Test
     fun `delete everything empties every table`() = runTest {
         seed()
         val stores = listOf(
             RoomTaskRepository(db), RoomFixedEventRepository(db), RoomPlanRepository(db), RoomRoutineRepository(db),
-            RoomMemoryStore(db), RoomAuditLog(db), RoomPreferencesStore(db),
+            RoomMemoryStore(db), RoomAuditLog(db), RoomPreferencesStore(db), RoomSecurityStore(db),
         )
         assertTrue(stores.all { it.count() > 0 })
         val report = DataDeletionService(stores).deleteEverything()

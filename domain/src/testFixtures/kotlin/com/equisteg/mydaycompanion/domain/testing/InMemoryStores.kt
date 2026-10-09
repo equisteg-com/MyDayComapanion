@@ -16,10 +16,14 @@ import com.equisteg.mydaycompanion.domain.repository.PlanRepository
 import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
 import com.equisteg.mydaycompanion.domain.repository.RoutineRepository
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
+import com.equisteg.mydaycompanion.domain.security.ChallengeAnswer
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
+import com.equisteg.mydaycompanion.domain.security.SecurityStore
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
+import java.time.Instant
 import java.time.LocalDate
 
 class InMemoryTaskRepository : TaskRepository {
@@ -101,4 +105,19 @@ class FixedDeviceState(var state: DeviceState = DeviceState(batteryPercent = 80,
 class SequentialIds(private val prefix: String = "id") : IdGenerator {
     private var n = 0
     override fun newId() = "$prefix-${++n}"
+}
+
+class InMemorySecurityStore(private var current: SecuritySettings? = null) : SecurityStore {
+    private val answers = mutableListOf<ChallengeAnswer>()
+    private val failed = mutableListOf<Instant>()
+    override val storeName = "security"
+    override suspend fun settings() = current ?: SecuritySettings()
+    override suspend fun saveSettings(settings: SecuritySettings) { current = settings }
+    override suspend fun challenges() = answers.toList()
+    override suspend fun replaceChallenges(answers: List<ChallengeAnswer>) { this.answers.clear(); this.answers += answers }
+    override suspend fun failures() = failed.toList()
+    override suspend fun recordFailure(at: Instant) { failed += at }
+    override suspend fun clearFailures() = failed.clear()
+    override suspend fun deleteAll() { current = null; answers.clear(); failed.clear() }
+    override suspend fun count() = (if (current == null) 0 else 1) + answers.size + failed.size
 }

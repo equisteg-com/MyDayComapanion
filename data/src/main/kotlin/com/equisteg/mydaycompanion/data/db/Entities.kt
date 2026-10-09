@@ -102,3 +102,28 @@ data class PreferencesEntity(
     val bufferMinutes: Int,
     val speechOutputEnabled: Boolean,
 )
+
+@Entity(tableName = "security_settings")
+data class SecuritySettingsEntity(
+    @PrimaryKey val id: Int = 1,
+    val appLockEnabled: Boolean,
+    val lockAfterMinutes: Int,
+    val wipeOnRepeatedFailure: Boolean,
+    val personalApproval: String,
+)
+
+/** Challenge answers are stored only as salted PBKDF2 hashes (build doc §6.3). */
+@Entity(tableName = "challenge_answers")
+data class ChallengeAnswerEntity(
+    @PrimaryKey val id: String,
+    val question: String,
+    val salt: String,
+    val hash: String,
+    val iterations: Int,
+)
+
+@Entity(tableName = "auth_failures", indices = [Index("timestamp")])
+data class AuthFailureEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val timestamp: String,
+)

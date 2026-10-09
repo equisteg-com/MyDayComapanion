@@ -21,8 +21,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.equisteg.mydaycompanion.domain.security.ApprovalStep
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
+import com.equisteg.mydaycompanion.ui.screens.LockScreen
 import com.equisteg.mydaycompanion.ui.screens.PlanScreen
 import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 
@@ -36,6 +39,12 @@ enum class Destination(val label: String, val icon: ImageVector) {
 fun AppNavigation(viewModel: MainViewModel) {
     var current by rememberSaveable { mutableStateOf(Destination.PLAN) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    if (state.locked) {
+        Scaffold { padding -> LockScreen(state, viewModel::onUnlockRequested, viewModel::onPanicWipe, Modifier.padding(padding)) }
+        state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
+        return
+    }
 
     Scaffold(
         bottomBar = {
@@ -63,7 +72,9 @@ fun AppNavigation(viewModel: MainViewModel) {
         }
     }
 
-    state.pending?.let { pending ->
+    state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
+
+    state.pending?.takeIf { it.steps.firstOrNull() == ApprovalStep.TAP }?.let { pending ->
         AlertDialog(
             onDismissRequest = viewModel::onCancelPending,
             title = { Text(pending.title) },

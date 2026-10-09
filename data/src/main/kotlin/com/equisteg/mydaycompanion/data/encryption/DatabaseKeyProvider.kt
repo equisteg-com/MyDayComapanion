@@ -14,6 +14,9 @@ import javax.crypto.spec.GCMParameterSpec
 /** Supplies the passphrase that encrypts the local database. */
 interface DatabaseKeyProvider {
     fun getOrCreatePassphrase(): ByteArray
+
+    /** Deletes the wrapped passphrase and the Keystore key, so old database files can never be opened again. */
+    fun destroy()
 }
 
 /**
@@ -32,6 +35,12 @@ class KeystoreDatabaseKeyProvider(private val context: Context) : DatabaseKeyPro
         tmp.writeBytes(wrap(passphrase))
         check(tmp.renameTo(file)) { "Could not store wrapped database key" }
         return passphrase
+    }
+
+    override fun destroy() {
+        listOf(wrappedKeyFile(), File(context.noBackupFilesDir, WRAPPED_KEY_FILE + ".tmp")).forEach { it.delete() }
+        val ks = KeyStore.getInstance(ANDROID_KEYSTORE).apply { load(null) }
+        if (ks.containsAlias(KEY_ALIAS)) ks.deleteEntry(KEY_ALIAS)
     }
 
     private fun wrappedKeyFile() = File(context.noBackupFilesDir, WRAPPED_KEY_FILE)

@@ -20,6 +20,8 @@ and makes no network calls (the app has no INTERNET permission regardless).
 | androidx.core:core-ktx | 1.16.0 | Apache-2.0 | Permission checks, compat |
 | androidx.lifecycle (runtime, viewmodel-compose, runtime-compose) | 2.9.1 | Apache-2.0 | ViewModel, lifecycle-aware state |
 | androidx.activity:activity-compose | 1.10.1 | Apache-2.0 | Compose host, file picker |
+| androidx.biometric:biometric | 1.1.0 | Apache-2.0 | System fingerprint/face/screen-lock prompt for app lock and approvals (build doc §6.2) |
+| androidx.fragment:fragment-ktx | 1.8.5 | Apache-2.0 | FragmentActivity host that BiometricPrompt needs; pinned so activity-result APIs work |
 | Compose BOM (ui, material3, material-icons-core, tooling-preview) | 2025.06.00 | Apache-2.0 | UI |
 | androidx.room (runtime, ktx; compiler at build time) | 2.7.2 | Apache-2.0 | Local database |
 | androidx.sqlite | 2.5.2 | Apache-2.0 | SQLite support API |

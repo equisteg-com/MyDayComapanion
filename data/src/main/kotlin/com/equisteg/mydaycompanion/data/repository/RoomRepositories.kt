@@ -1,6 +1,8 @@
 package com.equisteg.mydaycompanion.data.repository
 
 import com.equisteg.mydaycompanion.data.db.AuditEntity
+import com.equisteg.mydaycompanion.data.db.AuthFailureEntity
+import com.equisteg.mydaycompanion.data.db.ChallengeAnswerEntity
 import com.equisteg.mydaycompanion.data.db.FixedEventEntity
 import com.equisteg.mydaycompanion.data.db.MdcDatabase
 import com.equisteg.mydaycompanion.data.db.MemoryEntity
@@ -8,6 +10,7 @@ import com.equisteg.mydaycompanion.data.db.PlanBlockEntity
 import com.equisteg.mydaycompanion.data.db.PlanEntity
 import com.equisteg.mydaycompanion.data.db.PreferencesEntity
 import com.equisteg.mydaycompanion.data.db.RoutineEntity
+import com.equisteg.mydaycompanion.data.db.SecuritySettingsEntity
 import com.equisteg.mydaycompanion.data.db.TaskEntity
 import com.equisteg.mydaycompanion.domain.audit.AuditActor
 import com.equisteg.mydaycompanion.domain.audit.AuditDecision
@@ -40,6 +43,10 @@ import com.equisteg.mydaycompanion.domain.repository.PlanRepository
 import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
 import com.equisteg.mydaycompanion.domain.repository.RoutineRepository
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
+import com.equisteg.mydaycompanion.domain.security.ChallengeAnswer
+import com.equisteg.mydaycompanion.domain.security.PersonalApproval
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
+import com.equisteg.mydaycompanion.domain.security.SecurityStore
 import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -155,6 +162,30 @@ class RoomPreferencesStore(db: MdcDatabase) : PreferencesStore {
     override suspend fun set(preferences: UserPreferences) = dao.set(
         PreferencesEntity(1, preferences.dayStart.toString(), preferences.dayEnd.toString(), preferences.bufferMinutes, preferences.speechOutputEnabled),
     )
+    override suspend fun deleteAll() = dao.deleteAll()
+    override suspend fun count() = dao.count()
+}
+
+class RoomSecurityStore(db: MdcDatabase) : SecurityStore {
+    private val dao = db.security()
+    override val storeName = "security"
+    override suspend fun settings(): SecuritySettings = dao.settings()?.let {
+        SecuritySettings(
+            it.appLockEnabled,
+            it.lockAfterMinutes.takeIf { m -> m in SecuritySettings.LOCK_AFTER_CHOICES } ?: SecuritySettings().lockAfterMinutes,
+            it.wipeOnRepeatedFailure,
+            PersonalApproval.entries.firstOrNull { p -> p.name == it.personalApproval } ?: PersonalApproval.DEVICE_CREDENTIAL,
+        )
+    } ?: SecuritySettings()
+    override suspend fun saveSettings(settings: SecuritySettings) = dao.saveSettings(
+        SecuritySettingsEntity(1, settings.appLockEnabled, settings.lockAfterMinutes, settings.wipeOnRepeatedFailure, settings.personalApproval.name),
+    )
+    override suspend fun challenges() = dao.challenges().map { ChallengeAnswer(it.id, it.question, it.salt, it.hash, it.iterations) }
+    override suspend fun replaceChallenges(answers: List<ChallengeAnswer>) =
+        dao.replaceChallenges(answers.map { ChallengeAnswerEntity(it.id, it.question, it.salt, it.hash, it.iterations) })
+    override suspend fun failures() = dao.failures().map(Instant::parse)
+    override suspend fun recordFailure(at: Instant) = dao.insertFailure(AuthFailureEntity(timestamp = at.toString()))
+    override suspend fun clearFailures() = dao.clearFailures()
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun count() = dao.count()
 }

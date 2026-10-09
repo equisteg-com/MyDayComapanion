@@ -5,11 +5,16 @@
     <!--
       Local-first guarantee: V1 has no network path at all. The INTERNET permission is removed
       even if a library tries to add it, and CI checks the built APK (see .github/workflows/ci.yml).
-      Phase 0 requests no runtime permissions. Notifications, microphone and calendar arrive in
-      Phase 1, each justified in docs/prebuild/06-permission-model.md.
+      No runtime permissions yet. Notifications, microphone and calendar arrive later, each justified
+      in docs/prebuild/06-permission-model.md.
     -->
     <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" tools:node="remove" />
+
+    <!-- System fingerprint/face/screen-lock prompt for the app lock and approvals (build doc §6.2).
+         Normal install-time permissions; the app only learns success or failure. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.USE_FINGERPRINT" android:maxSdkVersion="27" />
 
     <application
         android:name=".MyDayCompanionApp"

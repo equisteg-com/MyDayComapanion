@@ -11,7 +11,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.equisteg.mydaycompanion.data.privacy.ContentResolverExportTargets
+import com.equisteg.mydaycompanion.domain.security.ChallengeVerifier
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
+import com.equisteg.mydaycompanion.ui.AuthOutcome
+import com.equisteg.mydaycompanion.ui.AuthPurpose
 import com.equisteg.mydaycompanion.navigation.AppNavigation
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import kotlinx.coroutines.runBlocking
@@ -21,8 +25,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
-private class TestServices(val graph: TestGraph) : AppServices {
+internal class TestServices(val graph: TestGraph, appLock: Boolean = false) : AppServices {
     override val clock = graph.clock
     override val orchestrator = graph.orchestrator
     override val tasks = graph.tasks
@@ -30,6 +36,18 @@ private class TestServices(val graph: TestGraph) : AppServices {
     override val audit = graph.audit
     override val flags = com.equisteg.mydaycompanion.domain.config.FeatureFlags()
     override val exportTargets = ContentResolverExportTargets(ApplicationProvider.getApplicationContext<android.app.Application>().contentResolver)
+    override val security = graph.security
+    override val challenges = ChallengeVerifier(graph.security, graph.clock::instant)
+    var wipedStorage = false
+
+    init {
+        runBlocking { graph.security.saveSettings(SecuritySettings(appLockEnabled = appLock)) }
+    }
+
+    override fun wipeLocalStorage(): Boolean {
+        wipedStorage = true
+        return true
+    }
 }
 
 @RunWith(RobolectricTestRunner::class)
@@ -40,7 +58,8 @@ class MagicMomentUiTest {
     val compose = createComposeRule()
 
     private val graph = TestGraph()
-    private val viewModel = MainViewModel(TestServices(graph))
+    private val services = TestServices(graph)
+    private val viewModel = MainViewModel(services)
 
     @Test
     fun `type a day, review the proposal, add it, see the saved plan`() {
@@ -101,6 +120,29 @@ class MagicMomentUiTest {
         assertEquals(1, runBlocking { graph.tasks.count() }, "nothing deleted before confirmation")
 
         compose.onNodeWithTag("confirm").performClick()
-        compose.waitUntil(5_000) { runBlocking { graph.tasks.count() } == 0 }
+        waitFor("screen-lock prompt") { viewModel.state.value.authRequest?.purpose == AuthPurpose.APPROVE }
+        assertEquals(1, runBlocking { graph.tasks.count() }, "nothing deleted before the screen lock confirms")
+
+        viewModel.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        waitFor("wipe") { viewModel.state.value.wiped }
+        assertEquals(0, runBlocking { graph.tasks.count() })
+        assertTrue(services.wipedStorage, "database files and key destroyed after the verified delete")
+    }
+
+    @Test
+    fun `a cancelled screen-lock prompt deletes nothing`() {
+        runBlocking {
+            graph.tasks.upsert(listOf(com.equisteg.mydaycompanion.domain.model.Task("t", "x", createdAt = graph.clock.instant())))
+        }
+        compose.setContent { AppNavigation(viewModel) }
+        compose.onNodeWithTag("nav-SETTINGS").performClick()
+        compose.onNodeWithTag("delete-all").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("confirm")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("confirm").performClick()
+        waitFor("screen-lock prompt") { viewModel.state.value.authRequest != null }
+        viewModel.onDeviceAuthResult(AuthOutcome.CANCELLED)
+        waitFor("cancelled") { viewModel.state.value.message == "Cancelled." }
+        assertEquals(1, runBlocking { graph.tasks.count() })
+        assertFalse(services.wipedStorage)
     }
 }

@@ -1,24 +1,112 @@
 package com.equisteg.mydaycompanion
 
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.equisteg.mydaycompanion.navigation.AppNavigation
+import com.equisteg.mydaycompanion.ui.AuthOutcome
+import com.equisteg.mydaycompanion.ui.AuthRequest
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import com.equisteg.mydaycompanion.ui.theme.MyDayCompanionTheme
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlin.system.exitProcess
 
-class MainActivity : ComponentActivity() {
+/**
+ * Hosts the Compose UI and the system authentication prompt (build doc §6.2). A FragmentActivity
+ * because BiometricPrompt needs one. The view model asks for a prompt through its state; the
+ * result goes straight back, so a confirmation is only ever created after the system says yes.
+ */
+class MainActivity : FragmentActivity() {
+    private lateinit var viewModel: MainViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         val services = (application as MyDayCompanionApp).services
-        val viewModel = ViewModelProvider(this, MainViewModel.factory(services))[MainViewModel::class.java]
+        viewModel = ViewModelProvider(this, MainViewModel.factory(services))[MainViewModel::class.java]
+
+        lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) = viewModel.onAppForeground()
+                override fun onStop(owner: LifecycleOwner) = viewModel.onAppBackground()
+            },
+        )
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state.map { it.authRequest }.distinctUntilChanged().collect { request -> request?.let(::authenticate) }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state.map { it.wiped }.distinctUntilChanged().collect { wiped -> if (wiped) restart() }
+            }
+        }
+
         setContent {
             MyDayCompanionTheme {
                 AppNavigation(viewModel)
             }
         }
+    }
+
+    private fun authenticate(request: AuthRequest) {
+        // Strong biometrics or the screen lock. Android 8-10 cannot combine strong biometrics with the
+        // screen lock in one prompt, so those versions use the platform's default biometric class.
+        val authenticators = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) BIOMETRIC_STRONG or DEVICE_CREDENTIAL else BIOMETRIC_WEAK or DEVICE_CREDENTIAL
+        if (BiometricManager.from(this).canAuthenticate(authenticators) != BiometricManager.BIOMETRIC_SUCCESS) {
+            viewModel.onDeviceAuthResult(AuthOutcome.UNAVAILABLE)
+            return
+        }
+        val prompt = BiometricPrompt(
+            this,
+            ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) =
+                    viewModel.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) =
+                    viewModel.onDeviceAuthResult(
+                        if (errorCode == BiometricPrompt.ERROR_NO_DEVICE_CREDENTIAL || errorCode == BiometricPrompt.ERROR_HW_NOT_PRESENT) {
+                            AuthOutcome.UNAVAILABLE
+                        } else {
+                            AuthOutcome.CANCELLED
+                        },
+                    )
+                // onAuthenticationFailed (one unrecognised finger) keeps the prompt open; the system limits retries.
+            },
+        )
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle(request.title)
+                .setSubtitle(request.subtitle)
+                .setAllowedAuthenticators(authenticators)
+                .setConfirmationRequired(true)
+                .build(),
+        )
+    }
+
+    /** After a wipe the database and its key are gone; start a fresh process so nothing old stays in memory. */
+    private fun restart() {
+        val launch = packageManager.getLaunchIntentForPackage(packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        if (launch != null) startActivity(launch)
+        finishAffinity()
+        exitProcess(0)
     }
 }

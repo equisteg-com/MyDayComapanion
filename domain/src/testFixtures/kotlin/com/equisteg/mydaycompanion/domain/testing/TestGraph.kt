@@ -19,6 +19,8 @@ import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.ExportTargets
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
 import com.equisteg.mydaycompanion.domain.tools.ScheduleReminderTool
+import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
 import com.equisteg.mydaycompanion.domain.tools.ToolRegistry
 import java.time.Clock
 import java.time.Instant
@@ -49,6 +51,7 @@ class TestGraph(
     val memories = InMemoryMemoryStore()
     val audit = InMemoryAuditLog()
     val preferences = InMemoryPreferencesStore()
+    val security = InMemorySecurityStore()
     val device = FixedDeviceState()
     val ids = SequentialIds()
     val exportTargets = InMemoryExportTargets()
@@ -57,7 +60,7 @@ class TestGraph(
     val permissions = PermissionChecker { it in grantedPermissions }
     val policy = ToolAuthorizationPolicy(flags, permissions)
     val export = DataExportService(tasks, events, plans, routines, memories, audit, preferences, clock)
-    val deletion = DataDeletionService(listOf(tasks, events, plans, routines, memories, audit, preferences))
+    val deletion = DataDeletionService(listOf(tasks, events, plans, routines, memories, audit, preferences, security))
     val registry = ToolRegistry(
         listOf(
             CreateTasksTool(tasks, events, ids, clock),
@@ -66,6 +69,8 @@ class TestGraph(
             ScheduleReminderTool(tasks, NoNotificationScheduler),
             ExportDataTool(export, exportTargets),
             DeleteAllDataTool(deletion),
+            UpdateSecuritySettingsTool(security),
+            SetChallengeQuestionsTool(security),
         ),
     )
     val orchestrator = AgentOrchestrator(

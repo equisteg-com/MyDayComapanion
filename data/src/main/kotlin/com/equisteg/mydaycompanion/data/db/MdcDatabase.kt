@@ -15,6 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         MemoryEntity::class,
         AuditEntity::class,
         PreferencesEntity::class,
+        SecuritySettingsEntity::class,
+        ChallengeAnswerEntity::class,
+        AuthFailureEntity::class,
     ],
     version = MdcDatabase.VERSION,
     exportSchema = true,
@@ -27,9 +30,10 @@ abstract class MdcDatabase : RoomDatabase() {
     abstract fun memories(): MemoryDao
     abstract fun audit(): AuditDao
     abstract fun preferences(): PreferencesDao
+    abstract fun security(): SecurityDao
 
     companion object {
-        const val VERSION = 2
+        const val VERSION = 3
         const val NAME = "mydaycompanion.db"
     }
 }
@@ -47,5 +51,21 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    /** v3: owner verification (build doc §6): security settings, hashed challenge answers, failed-answer times. */
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `security_settings` (`id` INTEGER NOT NULL, `appLockEnabled` INTEGER NOT NULL, " +
+                    "`lockAfterMinutes` INTEGER NOT NULL, `wipeOnRepeatedFailure` INTEGER NOT NULL, `personalApproval` TEXT NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL(
+                "CREATE TABLE IF NOT EXISTS `challenge_answers` (`id` TEXT NOT NULL, `question` TEXT NOT NULL, `salt` TEXT NOT NULL, " +
+                    "`hash` TEXT NOT NULL, `iterations` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+            )
+            db.execSQL("CREATE TABLE IF NOT EXISTS `auth_failures` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `timestamp` TEXT NOT NULL)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_auth_failures_timestamp` ON `auth_failures` (`timestamp`)")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

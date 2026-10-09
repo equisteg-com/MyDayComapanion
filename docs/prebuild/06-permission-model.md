@@ -3,7 +3,7 @@
 | ID | Check | Status | Evidence / resolution |
 |---|---|---|---|
 | PM-01 | Permission matrix complete | PASS | Android permissions table below. |
-| PM-02 | Every permission justified | PASS | Phase 0 requests none. |
+| PM-02 | Every permission justified | PASS | Phase 0 requested none; USE_BIOMETRIC / USE_FINGERPRINT added for owner verification (build doc §6.2), justified below. |
 | PM-03 | Tool allowlist complete | PASS | Tool table below = `ToolRegistry` contents in `AppContainer`. |
 | PM-04 | Agent authorization flow complete | PASS | Policy rules below; `ToolAuthorizationPolicyTest`. |
 | PM-05 | Revoked/denied permission handled | PASS | Checked live on every call (`AndroidPermissionChecker`); denial → `PERMISSION_MISSING`, audited. |
@@ -14,6 +14,7 @@
 | Permission | Phase | Purpose | Risk | Status |
 |---|---|---|---|---|
 | INTERNET, ACCESS_NETWORK_STATE | never in V1 | — | — | Explicitly removed (`tools:node="remove"`) |
+| USE_BIOMETRIC, USE_FINGERPRINT (API < 28) | 1 (agent OS PR 2) | Show the system fingerprint/face/screen-lock prompt for app lock and L3/L4/personal approvals. Install-time (normal) permissions, no runtime dialog; declared by `androidx.biometric` and declared explicitly in our manifest so the allowlist test sees them. The app never receives biometric data, only success or failure. | L0 | Declared |
 | POST_NOTIFICATIONS (API 33+) | 1 | Local reminders | L1 | Not declared yet |
 | RECEIVE_BOOT_COMPLETED | 1 | Re-register reminders after reboot | L0 | Not declared yet |
 | RECORD_AUDIO | 1 | On-device speech input, only while the mic button is held | L2 | Not declared yet |
@@ -33,7 +34,19 @@ graceful behaviour when denied.
 | `tasks.complete` | L1 | yes | when proposed by agent | — | — | status is DONE |
 | `reminders.schedule` | L1 | yes | never | POST_NOTIFICATIONS | reminders (off) | scheduler accepted |
 | `data.export` | L3 | **no** | always | — (SAF) | — | bytes written = export size |
-| `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0 |
+| `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0; then the app deletes the database files and destroys the key |
+| `security.updateSettings` | L4 | **no** | always | — | — | stored settings equal requested |
+| `security.setChallenges` | L4 | **no** | always | — | — | stored hashes equal requested |
+
+## Owner verification (build doc §6)
+
+After the policy returns `RequireConfirmation`, the UI collects the approval steps from `ApprovalRules`
+before it creates the `UserConfirmation`: a tap for every level; the device credential
+(`BiometricPrompt`, `BIOMETRIC_STRONG or DEVICE_CREDENTIAL` on Android 11+, `BIOMETRIC_WEAK or DEVICE_CREDENTIAL` before)
+for L3 and L4; one challenge answer for L4 when questions are set up. A phone without a screen lock falls back to a
+challenge answer; with neither, L3/L4 actions are unavailable. Challenge answers are PBKDF2-HMAC-SHA256 hashes
+(310,000 iterations, 16-byte salt). 5 wrong answers lock for 15 minutes; 10 in 24 hours require the device credential,
+or wipe local data when the owner opted in.
 
 ## Policy (deterministic, first failing rule wins)
 

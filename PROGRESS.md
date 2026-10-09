@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-10-09 — Agent OS PR 2: approvals, app lock, theft protection
+
+- Founder decision D-02 recorded: purchases will be checked by a free Cloudflare Worker (billing PR after PR 6).
+- `domain/security`: challenge answers hashed with PBKDF2-HMAC-SHA256 (310,000 iterations, 16-byte salt),
+  `LockoutPolicy` (5 wrong → 15 min; 10 in 24 h → device credential, or wipe when opted in), `ApprovalRules`
+  (tap; + device credential for L3/L4; + challenge for L4 when set up; personal items by the owner's choice).
+- New L4, user-only tools `security.updateSettings` and `security.setChallenges`; answers are hashed in the UI so clear
+  answers never reach the orchestrator or the audit log.
+- `data`: Room schema v3 (`security_settings`, `challenge_answers`, `auth_failures`) with `MIGRATION_2_3` and a
+  `MigrationTestHelper` test from v1; `LocalStorageWiper` deletes the database files and the Keystore key after a
+  verified delete (fixes the Phase 0 gap where only rows were deleted).
+- `app`: `MainActivity` is a `FragmentActivity` hosting `BiometricPrompt` (`androidx.biometric` 1.1.0, Apache-2.0);
+  lock screen with panic wipe; Settings → Security (app lock, lock delay, wipe-on-failure, personal approvals,
+  challenge questions, Find My Device guidance). Permissions USE_BIOMETRIC / USE_FINGERPRINT (normal) declared and
+  allowlisted.
+
 ## 2026-10-09 — Agent OS build document and text/time understanding v2
 
 - Founder phone test: the app did not understand normal or jumbled text and many features were switched off.

@@ -90,3 +90,31 @@ interface PreferencesDao {
     @Query("DELETE FROM preferences") suspend fun deleteAll()
     @Query("SELECT COUNT(*) FROM preferences") suspend fun count(): Int
 }
+
+@Dao
+abstract class SecurityDao {
+    @Query("SELECT * FROM security_settings WHERE id = 1") abstract suspend fun settings(): SecuritySettingsEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) abstract suspend fun saveSettings(settings: SecuritySettingsEntity)
+    @Query("SELECT * FROM challenge_answers ORDER BY id") abstract suspend fun challenges(): List<ChallengeAnswerEntity>
+    @Insert abstract suspend fun insertChallenges(answers: List<ChallengeAnswerEntity>)
+    @Query("DELETE FROM challenge_answers") abstract suspend fun deleteChallenges()
+    @Query("SELECT timestamp FROM auth_failures ORDER BY timestamp") abstract suspend fun failures(): List<String>
+    @Insert abstract suspend fun insertFailure(failure: AuthFailureEntity)
+    @Query("DELETE FROM auth_failures") abstract suspend fun clearFailures()
+    @Query("DELETE FROM security_settings") abstract suspend fun deleteSettings()
+    @Query("SELECT (SELECT COUNT(*) FROM security_settings) + (SELECT COUNT(*) FROM challenge_answers) + (SELECT COUNT(*) FROM auth_failures)")
+    abstract suspend fun count(): Int
+
+    @Transaction
+    open suspend fun replaceChallenges(answers: List<ChallengeAnswerEntity>) {
+        deleteChallenges()
+        insertChallenges(answers)
+    }
+
+    @Transaction
+    open suspend fun deleteAll() {
+        deleteSettings()
+        deleteChallenges()
+        clearFailures()
+    }
+}
