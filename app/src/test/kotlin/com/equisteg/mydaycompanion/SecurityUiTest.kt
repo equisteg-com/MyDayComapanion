@@ -5,6 +5,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
@@ -90,7 +91,7 @@ class SecurityUiTest {
         assertTrue(graph.audit.entries.none { it.detail.orEmpty().contains("Madurai", ignoreCase = true) })
 
         compose.onNodeWithTag("nav-SETTINGS").performClick()
-        compose.onNodeWithTag("delete-all").performClick()
+        compose.onNodeWithTag("delete-all").performScrollTo().performClick()
         waitFor(viewModel, "confirm dialog") { compose.onAllNodes(hasTestTag("confirm")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("confirm").performClick()
         waitFor(viewModel, "approval prompt") { viewModel.state.value.authRequest != null }

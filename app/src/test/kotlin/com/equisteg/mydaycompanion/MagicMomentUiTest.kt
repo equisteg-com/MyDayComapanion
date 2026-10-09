@@ -8,6 +8,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.equisteg.mydaycompanion.data.privacy.ContentResolverExportTargets
@@ -115,7 +116,7 @@ class MagicMomentUiTest {
         }
         compose.setContent { AppNavigation(viewModel) }
         compose.onNodeWithTag("nav-SETTINGS").performClick()
-        compose.onNodeWithTag("delete-all").performClick()
+        compose.onNodeWithTag("delete-all").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("confirm")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(1, runBlocking { graph.tasks.count() }, "nothing deleted before confirmation")
 
@@ -136,7 +137,7 @@ class MagicMomentUiTest {
         }
         compose.setContent { AppNavigation(viewModel) }
         compose.onNodeWithTag("nav-SETTINGS").performClick()
-        compose.onNodeWithTag("delete-all").performClick()
+        compose.onNodeWithTag("delete-all").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("confirm")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("confirm").performClick()
         waitFor("screen-lock prompt") { viewModel.state.value.authRequest != null }
