@@ -17,6 +17,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -32,6 +33,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
 import com.equisteg.mydaycompanion.domain.security.PersonalApproval
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
@@ -60,29 +62,34 @@ fun LockScreen(state: UiState, onUnlock: () -> Unit, onPanicWipe: () -> Unit, mo
 
 @Composable
 fun ChallengeDialog(prompt: ChallengePrompt, busy: Boolean, onAnswer: (String) -> Unit, onCancel: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
+            ChallengeForm(prompt, busy, onAnswer, onCancel, Modifier.padding(24.dp))
+        }
+    }
+}
+
+/** The question, a hidden answer field and the buttons; kept outside the dialog so it can be tested on its own. */
+@Composable
+fun ChallengeForm(prompt: ChallengePrompt, busy: Boolean, onAnswer: (String) -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     var answer by remember(prompt.questionId) { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("Confirm it's you") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(prompt.question)
-                OutlinedTextField(
-                    value = answer,
-                    onValueChange = { answer = it },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().testTag("challenge-answer"),
-                )
-                prompt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
-            }
-        },
-        confirmButton = {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("Confirm it's you", style = MaterialTheme.typography.titleLarge)
+        Text(prompt.question)
+        OutlinedTextField(
+            value = answer,
+            onValueChange = { answer = it },
+            singleLine = true,
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.fillMaxWidth().testTag("challenge-answer"),
+        )
+        prompt.error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) { Text("Cancel") }
             TextButton(onClick = { onAnswer(answer) }, enabled = !busy && answer.isNotBlank(), modifier = Modifier.testTag("challenge-submit")) { Text("Confirm") }
-        },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } },
-    )
+        }
+    }
 }
 
 /** Settings → Security: app lock, wipe-on-failure, personal approvals and challenge questions. */

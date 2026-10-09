@@ -1,18 +1,23 @@
 package com.equisteg.mydaycompanion
 
 import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
 import com.equisteg.mydaycompanion.navigation.AppNavigation
 import com.equisteg.mydaycompanion.ui.AuthOutcome
 import com.equisteg.mydaycompanion.ui.AuthPurpose
+import com.equisteg.mydaycompanion.ui.ChallengePrompt
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.screens.ChallengeForm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
@@ -96,8 +101,9 @@ class SecurityUiTest {
         compose.onNodeWithTag("confirm").performClick()
         waitFor(viewModel, "approval prompt") { viewModel.state.value.authRequest != null }
         viewModel.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        // The answer form itself is exercised in `the challenge form sends the typed answer`; Robolectric
+        // cannot idle a text field inside a dialog window, so this test answers through the view model.
         waitFor(viewModel, "challenge") { viewModel.state.value.challenge != null }
-        compose.onNodeWithTag("challenge-answer").assertExists()
 
         viewModel.onChallengeAnswer("wrong answer")
         waitFor(viewModel, "wrong answer shown") { viewModel.state.value.challenge?.error != null }
@@ -109,6 +115,20 @@ class SecurityUiTest {
         waitFor(viewModel, "wiped") { viewModel.state.value.wiped }
         assertEquals(0, runBlocking { graph.tasks.count() })
         assertTrue(services.wipedStorage)
+    }
+
+    @Test
+    fun `the challenge form sends the typed answer and shows errors`() {
+        var sent: String? = null
+        compose.setContent {
+            ChallengeForm(ChallengePrompt("q1", "First school?", error = "That's not right. Try again."), busy = false, onAnswer = { sent = it }, onCancel = {})
+        }
+        compose.onNodeWithText("First school?").assertExists()
+        compose.onNodeWithText("That's not right. Try again.").assertExists()
+        compose.onNodeWithTag("challenge-submit").assertIsNotEnabled()
+        compose.onNodeWithTag("challenge-answer").performTextInput("St Mary's")
+        compose.onNodeWithTag("challenge-submit").performClick()
+        assertEquals("St Mary's", sent)
     }
 
     private fun waitFor(viewModel: MainViewModel, what: String, condition: () -> Boolean) {
