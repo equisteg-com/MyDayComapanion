@@ -19,6 +19,7 @@ import com.equisteg.mydaycompanion.ui.AuthOutcome
 import com.equisteg.mydaycompanion.ui.AuthPurpose
 import com.equisteg.mydaycompanion.navigation.AppNavigation
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -60,7 +61,7 @@ class MagicMomentUiTest {
 
     private val graph = TestGraph()
     private val services = TestServices(graph)
-    private val viewModel = MainViewModel(services)
+    private val viewModel = MainViewModel(services, Dispatchers.Unconfined)
 
     @Test
     fun `type a day, review the proposal, add it, see the saved plan`() {

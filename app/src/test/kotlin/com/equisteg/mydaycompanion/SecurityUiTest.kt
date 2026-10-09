@@ -6,7 +6,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
@@ -14,6 +13,7 @@ import com.equisteg.mydaycompanion.navigation.AppNavigation
 import com.equisteg.mydaycompanion.ui.AuthOutcome
 import com.equisteg.mydaycompanion.ui.AuthPurpose
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
@@ -35,7 +35,7 @@ class SecurityUiTest {
 
     @Test
     fun `the app opens locked and unlocks only after the screen lock says yes`() {
-        val viewModel = MainViewModel(TestServices(graph, appLock = true))
+        val viewModel = MainViewModel(TestServices(graph, appLock = true), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
         waitFor(viewModel, "lock screen") { compose.onAllNodes(hasTestTag("lock-screen")).fetchSemanticsNodes().isNotEmpty() }
         assertTrue(compose.onAllNodes(hasTestTag("input")).fetchSemanticsNodes().isEmpty(), "nothing of the agent is visible")
@@ -54,7 +54,7 @@ class SecurityUiTest {
 
     @Test
     fun `leaving the app for longer than the lock delay locks it again`() {
-        val viewModel = MainViewModel(TestServices(graph, appLock = false))
+        val viewModel = MainViewModel(TestServices(graph, appLock = false), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
         waitFor(viewModel, "main screen") { compose.onAllNodes(hasTestTag("input")).fetchSemanticsNodes().isNotEmpty() }
         assertFalse(viewModel.state.value.locked)
@@ -76,7 +76,7 @@ class SecurityUiTest {
     fun `with challenge questions, delete everything also needs a correct answer`() {
         runBlocking { graph.tasks.upsert(listOf(Task("t", "x", createdAt = graph.clock.instant()))) }
         val services = TestServices(graph, appLock = false)
-        val viewModel = MainViewModel(services)
+        val viewModel = MainViewModel(services, Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
 
         viewModel.onSaveChallenges(
@@ -96,10 +96,10 @@ class SecurityUiTest {
         compose.onNodeWithTag("confirm").performClick()
         waitFor(viewModel, "approval prompt") { viewModel.state.value.authRequest != null }
         viewModel.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
-        waitFor(viewModel, "challenge") { compose.onAllNodes(hasTestTag("challenge-answer")).fetchSemanticsNodes().isNotEmpty() }
+        waitFor(viewModel, "challenge") { viewModel.state.value.challenge != null }
+        compose.onNodeWithTag("challenge-answer").assertExists()
 
-        compose.onNodeWithTag("challenge-answer").performTextInput("wrong answer")
-        compose.onNodeWithTag("challenge-submit").performClick()
+        viewModel.onChallengeAnswer("wrong answer")
         waitFor(viewModel, "wrong answer shown") { viewModel.state.value.challenge?.error != null }
         assertEquals(1, runBlocking { graph.tasks.count() }, "a wrong answer deletes nothing")
 

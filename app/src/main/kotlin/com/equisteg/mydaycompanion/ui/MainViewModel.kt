@@ -21,6 +21,7 @@ import com.equisteg.mydaycompanion.domain.security.ChallengeResult
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,7 +81,14 @@ data class UiState(
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
-class MainViewModel(private val services: AppServices) : ViewModel() {
+/**
+ * [background] runs hashing and file deletion off the main thread; tests pass a dispatcher that
+ * stays on the test thread so Robolectric's paused main looper never waits on another thread.
+ */
+class MainViewModel(
+    private val services: AppServices,
+    private val background: CoroutineDispatcher = Dispatchers.Default,
+) : ViewModel() {
     // Starts locked so nothing shows before the security settings are read; unlocks at once when the app lock is off.
     private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -207,7 +215,7 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
     fun onChallengeAnswer(answer: String) = launchBusy {
         val prompt = _state.value.challenge ?: return@launchBusy
         val pending = _state.value.pending
-        val result = withContext(Dispatchers.Default) { services.challenges.answer(prompt.questionId, answer) }
+        val result = withContext(background) { services.challenges.answer(prompt.questionId, answer) }
         when (result) {
             ChallengeResult.Correct -> {
                 _state.update { it.copy(challenge = null) }
@@ -270,7 +278,7 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
             _state.update { it.copy(message = "Pick three different questions and give each an answer.") }
             return@launchBusy
         }
-        val hashed = withContext(Dispatchers.Default) {
+        val hashed = withContext(background) {
             clean.mapIndexed { i, (q, a) -> ChallengeHasher.hash("q${i + 1}", q, a) }
         }
         request(
@@ -340,7 +348,7 @@ class MainViewModel(private val services: AppServices) : ViewModel() {
      * files and destroying their key leaves nothing readable, rows included.
      */
     private suspend fun wipeEverything() {
-        withContext(Dispatchers.IO) { services.wipeLocalStorage() }
+        withContext(background) { services.wipeLocalStorage() }
         _state.update { UiState(selectedDate = it.selectedDate, wiped = true, message = "Everything on this phone was deleted.") }
     }
 
