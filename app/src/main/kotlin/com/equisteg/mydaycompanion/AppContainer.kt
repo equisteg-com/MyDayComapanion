@@ -27,19 +27,25 @@ import com.equisteg.mydaycompanion.domain.policy.ToolAuthorizationPolicy
 import com.equisteg.mydaycompanion.domain.privacy.DataDeletionService
 import com.equisteg.mydaycompanion.domain.privacy.DataExportService
 import com.equisteg.mydaycompanion.domain.repository.PlanRepository
+import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
 import com.equisteg.mydaycompanion.domain.security.ChallengeVerifier
 import com.equisteg.mydaycompanion.domain.security.SecurityStore
+import com.equisteg.mydaycompanion.domain.tools.AddSubtaskTool
 import com.equisteg.mydaycompanion.domain.tools.CompleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.CreateTasksTool
 import com.equisteg.mydaycompanion.domain.tools.DeleteAllDataTool
+import com.equisteg.mydaycompanion.domain.tools.DeleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
+import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ScheduleReminderTool
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
 import com.equisteg.mydaycompanion.domain.tools.ToolRegistry
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateSettingsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateTaskTool
 import java.time.Clock
 
 /** What the UI needs. Implemented by [AppContainer] on device and by in-memory graphs in tests. */
@@ -53,6 +59,7 @@ interface AppServices {
     val exportTargets: ContentResolverExportTargets
     val security: SecurityStore
     val challenges: ChallengeVerifier
+    val preferences: PreferencesStore
 
     /** Closes and deletes the database files and destroys their key (build doc §8.4). The app must restart afterwards. */
     fun wipeLocalStorage(): Boolean
@@ -76,7 +83,7 @@ class AppContainer(context: Context) : AppServices {
     private val routines by lazy { RoomRoutineRepository(db) }
     private val memories by lazy { RoomMemoryStore(db) }
     override val audit by lazy { RoomAuditLog(db) }
-    private val preferences by lazy { RoomPreferencesStore(db) }
+    override val preferences by lazy { RoomPreferencesStore(db) }
     override val exportTargets by lazy { ContentResolverExportTargets(appContext.contentResolver) }
     override val security by lazy { RoomSecurityStore(db) }
     override val challenges by lazy { ChallengeVerifier(security, clock::instant) }
@@ -102,6 +109,11 @@ class AppContainer(context: Context) : AppServices {
                     CreateTasksTool(tasks, events, ids, clock),
                     GeneratePlanTool(tasks, events, plans, preferences, planner),
                     CompleteTaskTool(tasks, clock),
+                    ReopenTaskTool(tasks, clock),
+                    UpdateTaskTool(tasks, clock),
+                    DeleteTaskTool(tasks),
+                    AddSubtaskTool(tasks, ids, clock),
+                    UpdateSettingsTool(preferences),
                     ScheduleReminderTool(tasks, NoNotificationScheduler),
                     ExportDataTool(export, exportTargets),
                     DeleteAllDataTool(deletion),

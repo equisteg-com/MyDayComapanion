@@ -3,15 +3,17 @@ package com.equisteg.mydaycompanion
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.equisteg.mydaycompanion.data.privacy.ContentResolverExportTargets
+import com.equisteg.mydaycompanion.domain.model.UserPreferences
 import com.equisteg.mydaycompanion.domain.security.ChallengeVerifier
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
@@ -30,7 +32,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-internal class TestServices(val graph: TestGraph, appLock: Boolean = false) : AppServices {
+internal class TestServices(val graph: TestGraph, appLock: Boolean = false, onboarded: Boolean = true) : AppServices {
     override val clock = graph.clock
     override val orchestrator = graph.orchestrator
     override val tasks = graph.tasks
@@ -40,10 +42,14 @@ internal class TestServices(val graph: TestGraph, appLock: Boolean = false) : Ap
     override val exportTargets = ContentResolverExportTargets(ApplicationProvider.getApplicationContext<android.app.Application>().contentResolver)
     override val security = graph.security
     override val challenges = ChallengeVerifier(graph.security, graph.clock::instant)
+    override val preferences = graph.preferences
     var wipedStorage = false
 
     init {
-        runBlocking { graph.security.saveSettings(SecuritySettings(appLockEnabled = appLock)) }
+        runBlocking {
+            graph.security.saveSettings(SecuritySettings(appLockEnabled = appLock))
+            graph.preferences.set(UserPreferences(onboardingDone = onboarded))
+        }
     }
 
     override fun wipeLocalStorage(): Boolean {
@@ -76,7 +82,7 @@ class MagicMomentUiTest {
 
         compose.onNodeWithTag("accept").assertIsEnabled().performClick()
         waitFor("saved plan for 2026-10-07") { compose.onAllNodes(hasTestTag("plan-2026-10-07")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Finish the proposal").assertIsDisplayed()
+        compose.onNode(hasText("Finish the proposal") and hasAnyAncestor(hasTestTag("plan-2026-10-07"))).assertIsDisplayed()
         assertEquals(4, runBlocking { graph.tasks.count() })
     }
 

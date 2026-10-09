@@ -3,6 +3,7 @@ package com.equisteg.mydaycompanion.domain.ai
 import com.equisteg.mydaycompanion.domain.ai.text.ClauseSplitter
 import com.equisteg.mydaycompanion.domain.ai.text.DateParser
 import com.equisteg.mydaycompanion.domain.ai.text.DurationParser
+import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import com.equisteg.mydaycompanion.domain.ai.text.TextSpans
 import com.equisteg.mydaycompanion.domain.ai.text.TimeMatch
 import com.equisteg.mydaycompanion.domain.ai.text.TimeParser
@@ -25,11 +26,11 @@ import java.time.temporal.TemporalAdjusters
  * Version 2 reads dates and times wherever they appear in a sentence and in the many ways
  * people write them (see [TimeParser], [DateParser], [DurationParser]), splits a message into
  * items without breaking names or lists ([ClauseSplitter]), and lets one message cover several
- * days.
+ * days. Version 3 reads numeric dates ("3/4") in the owner's chosen order (request context "dateOrder").
  */
 class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiModelProvider {
     override val id: String = "rules"
-    override val version: String = "rule-extractor/2"
+    override val version: String = "rule-extractor/3"
 
     override fun capabilities() = ProviderCapabilities(
         modelClass = ModelClass.DETERMINISTIC,
@@ -52,12 +53,14 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
             return AiResult.Failure("invalid today", id)
         }
         val now = request.context["now"]?.let { try { LocalTime.parse(it) } catch (e: DateTimeParseException) { null } }
-        val dto = extract(request.untrustedInput, today, now)
+        val order = NumericDateOrder.entries.firstOrNull { it.name == request.context["dateOrder"] }
+        val dto = extract(request.untrustedInput, today, now, order)
         return AiResult.Success(json.encodeToString(TaskExtractionDto.serializer(), dto), id, version)
     }
 
     /** [now] enables relative times ("in 2 hours") and past-time warnings for today; null skips both. */
-    fun extract(input: String, today: LocalDate, now: LocalTime? = null): TaskExtractionDto {
+    fun extract(input: String, today: LocalDate, now: LocalTime? = null, order: NumericDateOrder? = null): TaskExtractionDto {
+        val dates = if (order == null) dates else DateParser(order)
         val clauses = ClauseSplitter.split(TextSpans.expandShorthand(input))
         val clauseDates = clauses.map { c -> dates.findAll(c, today) }
         val firstDate = clauses.indices.firstNotNullOfOrNull { i ->

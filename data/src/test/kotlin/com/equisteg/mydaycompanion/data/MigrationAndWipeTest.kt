@@ -9,6 +9,7 @@ import com.equisteg.mydaycompanion.data.db.MdcDatabase
 import com.equisteg.mydaycompanion.data.db.Migrations
 import com.equisteg.mydaycompanion.data.encryption.DatabaseKeyProvider
 import com.equisteg.mydaycompanion.data.privacy.LocalStorageWiper
+import com.equisteg.mydaycompanion.data.repository.RoomPreferencesStore
 import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
 import com.equisteg.mydaycompanion.domain.model.Task
@@ -47,8 +48,24 @@ class MigrationAndWipeTest {
 
         val db = Room.databaseBuilder(context, MdcDatabase::class.java, MIGRATED).addMigrations(*Migrations.ALL).allowMainThreadQueries().build()
         try {
-            assertEquals("Call Raj", RoomTaskRepository(db).get("t1")?.title)
+            val task = RoomTaskRepository(db).get("t1")!!
+            assertEquals("Call Raj", task.title)
+            assertEquals(null, task.notes)
+            assertFalse(task.personal)
             assertEquals(SecuritySettings(), RoomSecurityStore(db).settings(), "defaults until the owner changes them")
+            assertTrue(RoomPreferencesStore(db).get().onboardingDone, "an install that already has tasks skips first-run setup")
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
+    fun `an empty version 3 database still shows first-run setup after migrating`() = runTest {
+        helper.createDatabase(EMPTY, 3).close()
+        helper.runMigrationsAndValidate(EMPTY, MdcDatabase.VERSION, true, *Migrations.ALL).close()
+        val db = Room.databaseBuilder(context, MdcDatabase::class.java, EMPTY).addMigrations(*Migrations.ALL).allowMainThreadQueries().build()
+        try {
+            assertFalse(RoomPreferencesStore(db).get().onboardingDone)
         } finally {
             db.close()
         }
@@ -76,5 +93,6 @@ class MigrationAndWipeTest {
 
     private companion object {
         const val MIGRATED = "migration-test.db"
+        const val EMPTY = "migration-empty-test.db"
     }
 }

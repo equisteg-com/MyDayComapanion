@@ -1,5 +1,6 @@
 package com.equisteg.mydaycompanion.data.db
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.PrimaryKey
@@ -21,6 +22,9 @@ data class TaskEntity(
     val updatedAt: String,
     /** Soft start time (HH:mm) such as "in the morning"; added in schema version 2. */
     val preferredStart: String? = null,
+    /** Added in schema version 4. */
+    val notes: String? = null,
+    @ColumnInfo(defaultValue = "0") val personal: Boolean = false,
 )
 
 @Entity(tableName = "fixed_events", indices = [Index("date")])
@@ -101,6 +105,10 @@ data class PreferencesEntity(
     val dayEnd: String,
     val bufferMinutes: Int,
     val speechOutputEnabled: Boolean,
+    // Added in schema version 4.
+    @ColumnInfo(defaultValue = "DAY_MONTH") val dateOrder: String = "DAY_MONTH",
+    @ColumnInfo(defaultValue = "10") val reminderLeadMinutes: Int = 10,
+    @ColumnInfo(defaultValue = "0") val onboardingDone: Boolean = false,
 )
 
 @Entity(tableName = "security_settings")

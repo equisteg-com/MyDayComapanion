@@ -33,7 +33,7 @@ abstract class MdcDatabase : RoomDatabase() {
     abstract fun security(): SecurityDao
 
     companion object {
-        const val VERSION = 3
+        const val VERSION = 4
         const val NAME = "mydaycompanion.db"
     }
 }
@@ -67,5 +67,24 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    /**
+     * v4: task notes and the personal mark; date order, reminder lead time and the first-run flag.
+     * Installs that already hold data skip first-run setup.
+     */
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `notes` TEXT")
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `personal` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE `preferences` ADD COLUMN `dateOrder` TEXT NOT NULL DEFAULT 'DAY_MONTH'")
+            db.execSQL("ALTER TABLE `preferences` ADD COLUMN `reminderLeadMinutes` INTEGER NOT NULL DEFAULT 10")
+            db.execSQL("ALTER TABLE `preferences` ADD COLUMN `onboardingDone` INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("UPDATE `preferences` SET `onboardingDone` = 1")
+            db.execSQL(
+                "INSERT OR IGNORE INTO `preferences` (`id`, `dayStart`, `dayEnd`, `bufferMinutes`, `speechOutputEnabled`, `dateOrder`, " +
+                    "`reminderLeadMinutes`, `onboardingDone`) SELECT 1, '09:00', '21:00', 10, 0, 'DAY_MONTH', 10, 1 WHERE EXISTS (SELECT 1 FROM `tasks`)",
+            )
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

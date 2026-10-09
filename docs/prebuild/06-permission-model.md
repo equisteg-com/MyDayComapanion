@@ -31,7 +31,11 @@ graceful behaviour when denied.
 |---|---|---|---|---|---|---|
 | `tasks.create` | L2 | yes | when proposed by agent | — | — | re-read created ids |
 | `plan.generate` | L1 | yes | never | — | — | re-read + `PlanValidator` |
-| `tasks.complete` | L1 | yes | when proposed by agent | — | — | status is DONE |
+| `tasks.complete` / `tasks.reopen` | L1 | yes | when proposed by agent; always for a personal task | — | — | status is DONE / OPEN |
+| `tasks.update` | L2 | yes | when proposed by agent; always for a personal task | — | — | every field re-read and equal |
+| `tasks.delete` | L2 | yes | always | — | — | task and its subtasks can no longer be read |
+| `tasks.addSubtask` | L2 | yes | when proposed by agent; always under a personal task | — | — | new subtask re-read with its parent |
+| `settings.update` | L1 | **no** | never | — | — | stored preferences equal requested |
 | `reminders.schedule` | L1 | yes | never | POST_NOTIFICATIONS | reminders (off) | scheduler accepted |
 | `data.export` | L3 | **no** | always | — (SAF) | — | bytes written = export size |
 | `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0; then the app deletes the database files and destroys the key |
@@ -48,6 +52,11 @@ challenge answer; with neither, L3/L4 actions are unavailable. Challenge answers
 (310,000 iterations, 16-byte salt). 5 wrong answers lock for 15 minutes; 10 in 24 hours require the device credential,
 or wipe local data when the owner opted in.
 
+Personal items: a tool reports through `AgentTool.touchesPersonal` when its arguments act on a task the owner marked
+personal (`tasks.update`, `tasks.delete`, `tasks.complete`, `tasks.reopen`, `tasks.addSubtask`). The policy then
+always requires a confirmation, and `ApprovalRules` adds the owner's chosen check (device credential by default, or a
+challenge answer) after the tap. Taking the personal mark off a task is itself a change to a personal item.
+
 ## Policy (deterministic, first failing rule wins)
 
 1. Unknown tool → deny `UNKNOWN_TOOL`.
@@ -55,6 +64,6 @@ or wipe local data when the owner opted in.
 3. Agent requests a non-proposable tool → deny `NOT_AGENT_PROPOSABLE` (even with a confirmation).
 4. Arguments fail the tool's own validation → deny `INVALID_ARGUMENTS`.
 5. Required Android permission not granted now → deny `PERMISSION_MISSING`.
-6. L3/L4, or confirmation ALWAYS, or WHEN_PROPOSED_BY_AGENT with an agent requester → require a
+6. L3/L4, or confirmation ALWAYS, or a personal item, or WHEN_PROPOSED_BY_AGENT with an agent requester → require a
    `UserConfirmation` whose fingerprint matches SHA-256(tool id + canonical args); mismatch → deny.
 7. Otherwise allow. Every outcome is audited.

@@ -182,7 +182,7 @@ fun SecuritySection(
 }
 
 @Composable
-private fun ChallengeSetupDialog(onSave: (List<Pair<String, String>>) -> Unit, onCancel: () -> Unit) {
+internal fun ChallengeSetupDialog(onSave: (List<Pair<String, String>>) -> Unit, onCancel: () -> Unit) {
     val questions = remember { mutableStateListOf(*ChallengeHasher.SUGGESTED_QUESTIONS.take(ChallengeHasher.QUESTION_COUNT).toTypedArray()) }
     val answers = remember { mutableStateListOf(*Array(ChallengeHasher.QUESTION_COUNT) { "" }) }
     AlertDialog(

@@ -12,6 +12,7 @@ import com.equisteg.mydaycompanion.data.db.PreferencesEntity
 import com.equisteg.mydaycompanion.data.db.RoutineEntity
 import com.equisteg.mydaycompanion.data.db.SecuritySettingsEntity
 import com.equisteg.mydaycompanion.data.db.TaskEntity
+import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import com.equisteg.mydaycompanion.domain.audit.AuditActor
 import com.equisteg.mydaycompanion.domain.audit.AuditDecision
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
@@ -157,10 +158,17 @@ class RoomPreferencesStore(db: MdcDatabase) : PreferencesStore {
     private val dao = db.preferences()
     override val storeName = "preferences"
     override suspend fun get(): UserPreferences = dao.get()?.let {
-        UserPreferences(LocalTime.parse(it.dayStart), LocalTime.parse(it.dayEnd), it.bufferMinutes, it.speechOutputEnabled)
+        UserPreferences(
+            LocalTime.parse(it.dayStart), LocalTime.parse(it.dayEnd), it.bufferMinutes, it.speechOutputEnabled,
+            NumericDateOrder.entries.firstOrNull { o -> o.name == it.dateOrder } ?: NumericDateOrder.DAY_MONTH,
+            it.reminderLeadMinutes, it.onboardingDone,
+        )
     } ?: UserPreferences()
     override suspend fun set(preferences: UserPreferences) = dao.set(
-        PreferencesEntity(1, preferences.dayStart.toString(), preferences.dayEnd.toString(), preferences.bufferMinutes, preferences.speechOutputEnabled),
+        PreferencesEntity(
+            1, preferences.dayStart.toString(), preferences.dayEnd.toString(), preferences.bufferMinutes, preferences.speechOutputEnabled,
+            preferences.dateOrder.name, preferences.reminderLeadMinutes, preferences.onboardingDone,
+        ),
     )
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun count() = dao.count()
@@ -193,11 +201,12 @@ class RoomSecurityStore(db: MdcDatabase) : SecurityStore {
 private fun TaskEntity.toDomain() = Task(
     id, title, Priority.valueOf(priority), durationMinutes, date?.let(LocalDate::parse), deadline?.let(LocalDateTime::parse),
     TaskStatus.valueOf(status), parentId, Instant.parse(createdAt), Instant.parse(updatedAt), preferredStart?.let(LocalTime::parse),
+    notes, personal,
 )
 
 private fun Task.toEntity() = TaskEntity(
     id, title, priority.name, durationMinutes, date?.toString(), deadline?.toString(), status.name, parentId, createdAt.toString(), updatedAt.toString(),
-    preferredStart?.toString(),
+    preferredStart?.toString(), notes, personal,
 )
 
 private fun FixedEventEntity.toDomain() = FixedEvent(id, title, LocalDate.parse(date), LocalTime.parse(start), durationMinutes, EventSource.valueOf(source))

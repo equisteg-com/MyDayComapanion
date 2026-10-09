@@ -70,7 +70,12 @@ sealed interface AgentProposal {
 sealed interface ExecutionResult {
     data class Done(val summary: String) : ExecutionResult
     /** [riskLevel] tells the UI which approval steps to ask for (build doc §6.1). */
-    data class NeedsConfirmation(val actionFingerprint: String, val riskLevel: RiskLevel = RiskLevel.L2) : ExecutionResult
+    /** [personal] means the action touches an item the owner marked personal, so the owner's chosen verification applies. */
+    data class NeedsConfirmation(
+        val actionFingerprint: String,
+        val riskLevel: RiskLevel = RiskLevel.L2,
+        val personal: Boolean = false,
+    ) : ExecutionResult
     data class Denied(val reason: String) : ExecutionResult
     data class Failed(val reason: String) : ExecutionResult
 }
@@ -99,7 +104,7 @@ class AgentOrchestrator(
         val text = InputNormalizer.normalize(userText)
         if (text.isEmpty()) return AgentProposal.Empty
         val today = LocalDate.now(clock)
-        val request = contextBuilder.taskExtraction(text, today, memories.all(), LocalTime.now(clock))
+        val request = contextBuilder.taskExtraction(text, today, memories.all(), LocalTime.now(clock), preferences.get().dateOrder)
         val route = router.route(request, deviceState.current())
 
         var providerId = route.provider.id
@@ -183,6 +188,7 @@ class AgentOrchestrator(
     suspend fun execute(action: ProposedAction, requester: Requester, confirmation: UserConfirmation? = null): ExecutionResult {
         val tool = registry.find(action.toolId)
         val validation = tool?.validate(action.args)
+        val personal = tool != null && validation == ArgsValidation.Ok && tool.touchesPersonal(action.args)
         val decision = policy.decide(
             spec = tool?.spec,
             toolId = action.toolId,
@@ -190,6 +196,7 @@ class AgentOrchestrator(
             argsValid = validation == ArgsValidation.Ok,
             requester = requester,
             confirmation = confirmation,
+            personal = personal,
         )
         val actor = if (requester == Requester.USER) AuditActor.USER else AuditActor.AGENT
         val risk = tool?.spec?.riskLevel
@@ -204,7 +211,7 @@ class AgentOrchestrator(
             }
             is PolicyDecision.RequireConfirmation -> {
                 record(actor, auditAction, risk, AuditDecision.CONFIRMATION_REQUIRED, AuditOutcome.NOT_EXECUTED, null)
-                ExecutionResult.NeedsConfirmation(decision.actionFingerprint, risk ?: RiskLevel.L2)
+                ExecutionResult.NeedsConfirmation(decision.actionFingerprint, risk ?: RiskLevel.L2, personal)
             }
             PolicyDecision.Allow -> {
                 val outcome = try {

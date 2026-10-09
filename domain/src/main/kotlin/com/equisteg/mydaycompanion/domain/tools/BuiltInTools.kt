@@ -32,14 +32,14 @@ fun interface IdGenerator {
     }
 }
 
-private fun parseDate(s: String?): LocalDate? = s?.let { try { LocalDate.parse(it) } catch (e: DateTimeParseException) { null } }
+internal fun parseDate(s: String?): LocalDate? = s?.let { try { LocalDate.parse(it) } catch (e: DateTimeParseException) { null } }
 
-private fun parseTime(s: String?): LocalTime? = s?.let { try { LocalTime.parse(it) } catch (e: DateTimeParseException) { null } }
+internal fun parseTime(s: String?): LocalTime? = s?.let { try { LocalTime.parse(it) } catch (e: DateTimeParseException) { null } }
 
-private fun validTitle(t: String?): Boolean =
+internal fun validTitle(t: String?): Boolean =
     t != null && t.isNotBlank() && t.length <= Task.MAX_TITLE_LENGTH && !ContentSafety.looksLikeInstructionToAssistant(t)
 
-private fun validDuration(d: Int?): Boolean = d != null && d in Task.MIN_DURATION_MINUTES..Task.MAX_DURATION_MINUTES
+internal fun validDuration(d: Int?): Boolean = d != null && d in Task.MIN_DURATION_MINUTES..Task.MAX_DURATION_MINUTES
 
 /**
  * tasks.create — stores tasks and fixed events for one day.
@@ -207,6 +207,8 @@ class CompleteTaskTool(private val tasks: TaskRepository, private val clock: Clo
 
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean =
         tasks.get(args.string("taskId")!!)?.status == TaskStatus.DONE
+
+    override suspend fun touchesPersonal(args: JsonObject): Boolean = tasks.get(args.string("taskId")!!)?.personal == true
 }
 
 /** reminders.schedule — Phase 1 capability; registered now so the policy path is exercised. Args: {"taskId","at"} */

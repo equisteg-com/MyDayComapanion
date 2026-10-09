@@ -12,6 +12,7 @@ import com.equisteg.mydaycompanion.data.repository.RoomPreferencesStore
 import com.equisteg.mydaycompanion.data.repository.RoomRoutineRepository
 import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
+import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import com.equisteg.mydaycompanion.domain.audit.AuditActor
 import com.equisteg.mydaycompanion.domain.audit.AuditDecision
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
@@ -77,14 +78,16 @@ class RoomStorageTest {
         RoomTaskRepository(db).upsert(
             listOf(
                 Task("t1", "Finish the proposal", Priority.HIGH, 120, date, LocalDateTime.of(date, LocalTime.of(17, 0)), createdAt = now),
-                Task("t2", "Call Raj", Priority.MEDIUM, 15, date, createdAt = now, parentId = "t1"),
+                Task("t2", "Call Raj", Priority.MEDIUM, 15, date, createdAt = now, parentId = "t1", notes = "Ask about Friday", personal = true),
             ),
         )
         RoomFixedEventRepository(db).upsert(listOf(FixedEvent("e1", "Meeting", date, LocalTime.of(11, 0), 60)))
         RoomRoutineRepository(db).upsert(Routine("r1", "Gym", RoutineFrequency.WEEKDAYS, LocalTime.of(7, 0), 60, createdAt = now))
         RoomMemoryStore(db).upsert(MemoryItem("m1", MemoryType.PREFERENCE, "Likes mornings", MemorySource.USER_EXPLICIT, 1.0, MemoryStatus.ACTIVE, MemorySensitivity.LOW, Retention.UNTIL_DELETED, createdAt = now, updatedAt = now))
         RoomAuditLog(db).record(AuditEntry("a1", now, AuditActor.USER, "tasks.create", RiskLevel.L2, AuditDecision.ALLOWED, AuditOutcome.SUCCESS))
-        RoomPreferencesStore(db).set(UserPreferences(dayStart = LocalTime.of(8, 0)))
+        RoomPreferencesStore(db).set(
+            UserPreferences(dayStart = LocalTime.of(8, 0), dateOrder = NumericDateOrder.MONTH_DAY, reminderLeadMinutes = 30, onboardingDone = true),
+        )
         RoomSecurityStore(db).apply {
             saveSettings(SecuritySettings(lockAfterMinutes = 1, wipeOnRepeatedFailure = true, personalApproval = PersonalApproval.CHALLENGE))
             replaceChallenges(listOf(ChallengeHasher.hash("q1", "First school?", "St Mary's")))
@@ -101,7 +104,12 @@ class RoomStorageTest {
         val t1 = RoomTaskRepository(db).get("t1")!!
         assertEquals(LocalDateTime.of(date, LocalTime.of(17, 0)), t1.deadline)
         assertEquals("t1", RoomTaskRepository(db).get("t2")!!.parentId)
-        assertEquals(LocalTime.of(8, 0), RoomPreferencesStore(db).get().dayStart)
+        assertEquals("Ask about Friday", RoomTaskRepository(db).get("t2")!!.notes)
+        assertTrue(RoomTaskRepository(db).get("t2")!!.personal)
+        assertEquals(
+            UserPreferences(dayStart = LocalTime.of(8, 0), dateOrder = NumericDateOrder.MONTH_DAY, reminderLeadMinutes = 30, onboardingDone = true),
+            RoomPreferencesStore(db).get(),
+        )
         val plan = RoomPlanRepository(db).get(date)!!
         val again = DeterministicPlanner().plan(PlanRequest(date, RoomTaskRepository(db).all(), RoomFixedEventRepository(db).forDate(date)))
         assertEquals(again, plan)

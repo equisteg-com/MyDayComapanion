@@ -1,5 +1,6 @@
 package com.equisteg.mydaycompanion.domain.model
 
+import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -27,8 +28,14 @@ data class Task(
     val createdAt: Instant,
     val updatedAt: Instant = createdAt,
     val preferredStart: LocalTime? = null,
+    /** Free text the owner adds; never sent to the audit log. */
+    val notes: String? = null,
+    /** Personal items need the owner's device credential or a challenge answer for every change (build doc §6.1). */
+    val personal: Boolean = false,
 ) {
     companion object {
+        const val MAX_NOTES_LENGTH = 2_000
+        const val MAX_SUBTASKS = 20
         const val DEFAULT_DURATION_MINUTES = 30
         const val MIN_DURATION_MINUTES = 5
         const val MAX_DURATION_MINUTES = 8 * 60
@@ -68,4 +75,19 @@ data class UserPreferences(
     val dayEnd: LocalTime = LocalTime.of(21, 0),
     val bufferMinutes: Int = 10,
     val speechOutputEnabled: Boolean = false,
-)
+    /** How "3/4" is read: 3 April (day first) or March 4 (month first). */
+    val dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONTH,
+    /** How long before a task's start its reminder fires (used by reminders, part 4). */
+    val reminderLeadMinutes: Int = 10,
+    /** False until the owner finishes first-run setup. */
+    val onboardingDone: Boolean = false,
+) {
+    /** The planner needs at least two hours between the start and end of the day. */
+    val isValid: Boolean
+        get() = dayStart.plusHours(2) <= dayEnd && dayStart < dayEnd && bufferMinutes in BUFFER_CHOICES && reminderLeadMinutes in REMINDER_LEAD_CHOICES
+
+    companion object {
+        val BUFFER_CHOICES = listOf(0, 5, 10, 15, 30)
+        val REMINDER_LEAD_CHOICES = listOf(0, 5, 10, 15, 30, 60)
+    }
+}

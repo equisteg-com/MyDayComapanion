@@ -70,4 +70,10 @@ interface AgentTool {
 
     /** Re-reads state after execution to confirm the effect actually happened. */
     suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean
+
+    /**
+     * True when [args] (already validated) act on an item the owner marked personal. Such calls
+     * always need a confirmation, and the UI adds the owner's chosen verification (build doc §6.1).
+     */
+    suspend fun touchesPersonal(args: JsonObject): Boolean = false
 }

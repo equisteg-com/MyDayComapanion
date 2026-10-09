@@ -11,6 +11,8 @@ import com.equisteg.mydaycompanion.domain.agent.ProposedAction
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
 import com.equisteg.mydaycompanion.domain.model.DayPlan
 import com.equisteg.mydaycompanion.domain.model.Task
+import com.equisteg.mydaycompanion.domain.model.TaskStatus
+import com.equisteg.mydaycompanion.domain.model.UserPreferences
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
 import com.equisteg.mydaycompanion.domain.security.ApprovalRules
@@ -20,6 +22,8 @@ import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
 import com.equisteg.mydaycompanion.domain.security.ChallengeResult
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateSettingsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateTaskTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -78,7 +82,12 @@ data class UiState(
     val hasChallenges: Boolean = false,
     /** Local data and keys were destroyed; the activity restarts the app. */
     val wiped: Boolean = false,
-)
+    val preferences: UserPreferences = UserPreferences(),
+    /** False until preferences are read, so first-run setup does not flash for returning owners. */
+    val preferencesLoaded: Boolean = false,
+) {
+    val showOnboarding: Boolean get() = preferencesLoaded && !preferences.onboardingDone
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 /**
@@ -107,7 +116,16 @@ class MainViewModel(
     init {
         viewModelScope.launch {
             val settings = services.security.settings()
-            _state.update { it.copy(security = settings, hasChallenges = services.challenges.hasChallenges(), locked = settings.appLockEnabled) }
+            val prefs = services.preferences.get()
+            _state.update {
+                it.copy(
+                    security = settings,
+                    hasChallenges = services.challenges.hasChallenges(),
+                    locked = settings.appLockEnabled,
+                    preferences = prefs,
+                    preferencesLoaded = true,
+                )
+            }
         }
     }
 
@@ -138,10 +156,47 @@ class MainViewModel(
         _state.update { it.copy(proposal = null, input = "", message = if (days > 1) "Added to $days days." else "Added to your day.") }
     }
 
-    fun onCompleteTask(taskId: String) = launchBusy {
-        val r = services.orchestrator.execute(ProposedAction("tasks.complete", args("taskId" to taskId)), Requester.USER)
-        if (r is ExecutionResult.Done) replan() else _state.update { it.copy(message = describe(r)) }
+    /** Ticks a task done, or back to not done. */
+    fun onToggleTask(taskId: String) = launchBusy {
+        val done = services.tasks.get(taskId)?.status == TaskStatus.DONE
+        val action = ProposedAction(if (done) "tasks.reopen" else "tasks.complete", args("taskId" to taskId))
+        runUserAction(action, if (done) "Mark as not done?" else "Mark as done?", "This is a personal task.")
     }
+
+    /** The owner saved the edit form. Every field is sent, so the approval covers exactly what was on screen. */
+    fun onSaveTask(task: Task) = launchBusy {
+        runUserAction(ProposedAction("tasks.update", UpdateTaskTool.args(task)), "Save changes?", "This is a personal task.")
+    }
+
+    fun onDeleteTask(taskId: String) = launchBusy {
+        val subtasks = services.tasks.all().count { it.parentId == taskId }
+        request(
+            ProposedAction("tasks.delete", args("taskId" to taskId)),
+            "Delete this task?",
+            if (subtasks > 0) "The task and its $subtasks subtasks will be deleted." else "The task will be deleted.",
+        )
+    }
+
+    fun onAddSubtask(parentId: String, title: String, durationMinutes: Int) = launchBusy {
+        val action = ProposedAction(
+            "tasks.addSubtask",
+            JsonObject(mapOf("parentId" to JsonPrimitive(parentId), "title" to JsonPrimitive(title.trim()), "durationMinutes" to JsonPrimitive(durationMinutes))),
+        )
+        runUserAction(action, "Add this step?", "This is a personal task.")
+    }
+
+    /** Day window, buffer, date format and the rest of "Your day". Saved at once; the plan is rebuilt. */
+    fun onPreferencesChange(preferences: UserPreferences) = launchBusy {
+        val r = services.orchestrator.execute(ProposedAction("settings.update", UpdateSettingsTool.args(preferences)), Requester.USER)
+        if (r is ExecutionResult.Done) {
+            _state.update { it.copy(preferences = services.preferences.get()) }
+            replan()
+        } else {
+            _state.update { it.copy(message = "Those settings don't work together. The day needs at least two hours.") }
+        }
+    }
+
+    fun onFinishOnboarding(preferences: UserPreferences) = onPreferencesChange(preferences.copy(onboardingDone = true))
 
     fun onReplan() = launchBusy { replan() }
 
@@ -336,6 +391,7 @@ class MainViewModel(
                     return
                 }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
+                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
                 _state.update { it.copy(message = describe(r)) }
                 refreshHistory()
             }
@@ -368,8 +424,24 @@ class MainViewModel(
         when (val r = services.orchestrator.execute(action, Requester.USER)) {
             is ExecutionResult.NeedsConfirmation -> {
                 val s = _state.value
-                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = false, settings = s.security, hasChallenges = s.hasChallenges)
+                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
                 advance(PendingConfirmation(action, r.actionFingerprint, title, body, steps))
+            }
+            else -> _state.update { it.copy(message = describe(r)) }
+        }
+    }
+
+    /**
+     * An everyday action the owner started: it runs at once unless the policy asks for approval
+     * (a personal task), in which case the owner's chosen verification runs first.
+     */
+    private suspend fun runUserAction(action: ProposedAction, title: String, personalBody: String) {
+        when (val r = services.orchestrator.execute(action, Requester.USER)) {
+            is ExecutionResult.Done -> replanAfter(action)
+            is ExecutionResult.NeedsConfirmation -> {
+                val s = _state.value
+                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
+                advance(PendingConfirmation(action, r.actionFingerprint, title, personalBody, steps))
             }
             else -> _state.update { it.copy(message = describe(r)) }
         }
@@ -388,8 +460,14 @@ class MainViewModel(
         }
     }
 
-    private suspend fun replan() {
-        val date = _state.value.selectedDate
+    /** Rebuilds the shown day, and the day a task was moved to. */
+    private suspend fun replanAfter(action: ProposedAction) {
+        replan()
+        val movedTo = (action.args["date"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        if (movedTo != null && movedTo != _state.value.selectedDate) replan(movedTo)
+    }
+
+    private suspend fun replan(date: LocalDate = _state.value.selectedDate) {
         val pairs = buildList {
             add("date" to date.toString())
             if (date == LocalDate.now(services.clock)) add("notBefore" to LocalTime.now(services.clock).truncatedTo(ChronoUnit.MINUTES).toString())

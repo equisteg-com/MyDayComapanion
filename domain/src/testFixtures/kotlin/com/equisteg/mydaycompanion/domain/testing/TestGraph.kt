@@ -12,16 +12,21 @@ import com.equisteg.mydaycompanion.domain.policy.PermissionChecker
 import com.equisteg.mydaycompanion.domain.policy.ToolAuthorizationPolicy
 import com.equisteg.mydaycompanion.domain.privacy.DataDeletionService
 import com.equisteg.mydaycompanion.domain.privacy.DataExportService
+import com.equisteg.mydaycompanion.domain.tools.AddSubtaskTool
 import com.equisteg.mydaycompanion.domain.tools.CompleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.CreateTasksTool
 import com.equisteg.mydaycompanion.domain.tools.DeleteAllDataTool
+import com.equisteg.mydaycompanion.domain.tools.DeleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.ExportTargets
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
+import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ScheduleReminderTool
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
-import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
 import com.equisteg.mydaycompanion.domain.tools.ToolRegistry
+import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateSettingsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateTaskTool
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
@@ -66,6 +71,11 @@ class TestGraph(
             CreateTasksTool(tasks, events, ids, clock),
             GeneratePlanTool(tasks, events, plans, preferences, planner),
             CompleteTaskTool(tasks, clock),
+            ReopenTaskTool(tasks, clock),
+            UpdateTaskTool(tasks, clock),
+            DeleteTaskTool(tasks),
+            AddSubtaskTool(tasks, ids, clock),
+            UpdateSettingsTool(preferences),
             ScheduleReminderTool(tasks, NoNotificationScheduler),
             ExportDataTool(export, exportTargets),
             DeleteAllDataTool(deletion),

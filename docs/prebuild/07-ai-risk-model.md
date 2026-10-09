@@ -8,7 +8,7 @@
 | AI-04 | Device capability detection | PASS | `AndroidDeviceStateProvider` (battery, charging, idle, thermal, RAM, power-save). |
 | AI-05 | Energy policy | PASS | `EnergyPolicy`: ≤15% battery or severe thermal → rules only; ≤40%/power-save/low RAM/elevated thermal → small models only; charging+idle → maintenance allowed. Event-driven, no background AI. |
 | AI-06 | Prompt versioning | PASS | `PromptRegistry` (id + version); audit records provider id. |
-| AI-07 | Structured output | PASS | `task-extraction/v2` (per-item dates, preferred start, repeat, reminder time), strict JSON (unknown keys rejected). Prompt `task-extraction` v2, extractor `rule-extractor/2`. |
+| AI-07 | Structured output | PASS | `task-extraction/v2` (per-item dates, preferred start, repeat, reminder time), strict JSON (unknown keys rejected). Prompt `task-extraction` v2, extractor `rule-extractor/3` (numeric dates follow the owner's date-order setting, passed as request context `dateOrder`). |
 | AI-08 | Output validation | PASS | Schema → domain (dates, ranges, sizes, safety) → planner validation. |
 | AI-09 | Golden dataset | PASS | `tests/testdata/golden/task-extraction.v2.json` (75 cases: the 25 v1 cases unchanged plus messy text, time formats, soft times, deadlines, durations, dates, several days, repeats, reminders and one more injection case). Extraction threshold raised from 0.90 to 0.95. The v1 file is kept for history. |
 | AI-10 | Evaluation thresholds | PASS | Structured-output validity 100%, extraction accuracy ≥90%, plan validity 100%, unsafe-action rejection 100%. Current: 100% / 100% / 100% / 100%. Judged by deterministic rules, never an LLM judge. |

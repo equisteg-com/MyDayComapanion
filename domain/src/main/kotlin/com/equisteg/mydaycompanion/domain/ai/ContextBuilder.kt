@@ -1,5 +1,6 @@
 package com.equisteg.mydaycompanion.domain.ai
 
+import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import com.equisteg.mydaycompanion.domain.memory.MemoryItem
 import com.equisteg.mydaycompanion.domain.memory.MemorySensitivity
 import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
@@ -15,7 +16,13 @@ import java.time.temporal.ChronoUnit
 class ContextBuilder(
     private val maxMemories: Int = 10,
 ) {
-    fun taskExtraction(userText: String, today: LocalDate, memories: List<MemoryItem>, now: LocalTime? = null): AiRequest {
+    fun taskExtraction(
+        userText: String,
+        today: LocalDate,
+        memories: List<MemoryItem>,
+        now: LocalTime? = null,
+        dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONTH,
+    ): AiRequest {
         val prompt = PromptRegistry.TASK_EXTRACTION
         val usable = memories
             .filter { it.status == MemoryStatus.ACTIVE && it.deletedAt == null && it.sensitivity != MemorySensitivity.SENSITIVE }
@@ -28,6 +35,7 @@ class ContextBuilder(
             untrustedInput = InputNormalizer.normalize(userText),
             context = buildMap {
                 put("today", today.toString())
+                put("dateOrder", dateOrder.name)
                 if (now != null) put("now", now.truncatedTo(ChronoUnit.MINUTES).toString())
                 if (usable.isNotEmpty()) put("preferences", usable.joinToString("\n") { "- " + it.content })
             },

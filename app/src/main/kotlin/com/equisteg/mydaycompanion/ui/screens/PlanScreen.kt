@@ -1,5 +1,6 @@
 package com.equisteg.mydaycompanion.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -38,6 +42,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val plan by viewModel.plan.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val statusById = tasks.associate { it.id to it.status }
+    var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
+    val backlog = tasks.filter { it.date == null }.sortedBy { it.createdAt }
 
     LazyColumn(
         modifier = modifier.fillMaxSize().padding(horizontal = 16.dp),
@@ -95,20 +102,48 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         if (saved == null || saved.blocks.isEmpty()) {
             item { Text("No plan for this day yet.", style = MaterialTheme.typography.bodyMedium) }
         } else {
-            item { PlanBlocks(saved, statusById, onToggle = viewModel::onCompleteTask, tag = "plan-${saved.date}") }
+            item { PlanBlocks(saved, statusById, onToggle = viewModel::onToggleTask, tag = "plan-${saved.date}", onEdit = { editingId = it }) }
         }
+
+        if (dayTasks.isNotEmpty()) {
+            item {
+                Text("Tasks", style = MaterialTheme.typography.titleMedium)
+                Text("Tap a task to edit it, add steps or notes, or mark it personal.", style = MaterialTheme.typography.bodySmall)
+                TaskRows(dayTasks, viewModel::onToggleTask) { editingId = it }
+            }
+        }
+        if (backlog.isNotEmpty()) {
+            item {
+                Text("No day yet", style = MaterialTheme.typography.titleMedium)
+                TaskRows(backlog, viewModel::onToggleTask) { editingId = it }
+            }
+        }
+    }
+
+    tasks.firstOrNull { it.id == editingId }?.let { task ->
+        TaskEditDialog(
+            task = task,
+            subtasks = tasks.filter { it.parentId == task.id },
+            busy = state.busy,
+            onSave = { viewModel.onSaveTask(it); editingId = null },
+            onDelete = { viewModel.onDeleteTask(task.id); editingId = null },
+            onAddSubtask = { title, minutes -> viewModel.onAddSubtask(task.id, title, minutes) },
+            onDismiss = { editingId = null },
+        )
     }
 }
 
 @Composable
-private fun PlanBlocks(plan: DayPlan, statusById: Map<String, TaskStatus>, onToggle: ((String) -> Unit)?, tag: String) {
+private fun PlanBlocks(plan: DayPlan, statusById: Map<String, TaskStatus>, onToggle: ((String) -> Unit)?, tag: String, onEdit: ((String) -> Unit)? = null) {
     Column(Modifier.testTag(tag)) {
         plan.blocks.forEach { block ->
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 Text("${block.start}–${block.end}", modifier = Modifier.width(110.dp), style = MaterialTheme.typography.bodyMedium)
                 Text(
                     if (block.kind == BlockKind.FIXED_EVENT) "📌 ${block.title}" else block.title,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).then(
+                        if (onEdit != null && block.kind == BlockKind.TASK) Modifier.clickable { onEdit(block.refId) } else Modifier,
+                    ),
                 )
                 if (onToggle != null && block.kind == BlockKind.TASK) {
                     Checkbox(checked = statusById[block.refId] == TaskStatus.DONE, onCheckedChange = { onToggle(block.refId) })

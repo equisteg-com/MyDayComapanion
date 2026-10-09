@@ -50,6 +50,7 @@ class ToolAuthorizationPolicy(
         argsValid: Boolean,
         requester: Requester,
         confirmation: UserConfirmation?,
+        personal: Boolean = false,
     ): PolicyDecision {
         if (spec == null) return PolicyDecision.Deny(DenyReason.UNKNOWN_TOOL, toolId)
         if (spec.featureFlag != null && !flags.isEnabled(spec.featureFlag)) {
@@ -64,6 +65,7 @@ class ToolAuthorizationPolicy(
         val fingerprint = fingerprint(spec.id, canonicalArgs)
         val needsConfirmation = spec.riskLevel >= RiskLevel.L3 ||
             spec.confirmation == Confirmation.ALWAYS ||
+            personal ||
             (spec.confirmation == Confirmation.WHEN_PROPOSED_BY_AGENT && requester == Requester.AGENT)
         if (!needsConfirmation) return PolicyDecision.Allow
         if (confirmation == null) return PolicyDecision.RequireConfirmation(fingerprint)

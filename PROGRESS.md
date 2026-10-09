@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-10-09 — Agent OS PR 3: task editing, settings, first-run setup
+
+- New tools: `tasks.update` (every editable field, subtasks follow the task to a new day), `tasks.delete` (with its
+  subtasks, always a tap), `tasks.addSubtask` (one level, inherits day/priority/personal), `tasks.reopen`, and the
+  owner-only `settings.update` (L1).
+- Personal tasks: `AgentTool.touchesPersonal` makes the policy require a confirmation for any action on a task marked
+  personal; the UI adds the owner's chosen check (screen lock by default, or a challenge answer).
+- Planner `deterministic-planner/3`: a task broken into steps is planned through its steps. Extractor
+  `rule-extractor/3`: numeric dates ("3/4") follow the owner's day-first or month-first setting.
+- `data`: Room schema v4 (`tasks.notes`, `tasks.personal`, `preferences.dateOrder`, `reminderLeadMinutes`,
+  `onboardingDone`) with `MIGRATION_3_4`; installs that already hold tasks skip first-run setup.
+- `app`: the day's tasks listed under the plan (tick to complete or reopen, tap to edit); edit dialog with notes,
+  steps and the personal switch; Settings → Your day; 4-step first-run setup (welcome, your day, protection, try it).
+
 ## 2026-10-09 — Agent OS PR 2: approvals, app lock, theft protection
 
 - Founder decision D-02 recorded: purchases will be checked by a free Cloudflare Worker (billing PR after PR 6).
@@ -24,7 +38,7 @@
   theft protection, and an infrastructure table with a cost for each item (default ₹0). Founder decisions D-01..D-09
   added to `docs/prebuild/12-open-questions.md`.
 - PR 1 (this change): new on-device readers for dates, times and durations (`domain/ai/text/*`), smarter splitting,
-  schema `task-extraction/v2`, extractor `rule-extractor/2`, prompt v2, planner v2 (preferred start), multi-day
+  schema `task-extraction/v2`, extractor `rule-extractor/2` (now /3), prompt v2, planner v2 (preferred start), multi-day
   proposals in the UI, Room schema v2 (`tasks.preferredStart`). Golden set v2: 75 cases, 100% on all four metrics.
 - Next PRs, in order: delete-key fix + approvals + app lock; task edit/settings/onboarding; reminders + routines;
   voice + calendar + device actions; memory review + backup/restore + theft-protection settings.

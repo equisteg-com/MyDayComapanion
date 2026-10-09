@@ -49,7 +49,7 @@ class DataExportService(
                 "durationMinutes" to it.durationMinutes.toString(), "date" to it.date?.toString(),
                 "deadline" to it.deadline?.toString(), "status" to it.status.name, "parentId" to it.parentId,
                 "createdAt" to it.createdAt.toString(), "updatedAt" to it.updatedAt.toString(),
-                "preferredStart" to it.preferredStart?.toString(),
+                "preferredStart" to it.preferredStart?.toString(), "notes" to it.notes, "personal" to it.personal.toString(),
             )
         },
         fixedEvents = events.all().map {
@@ -93,6 +93,8 @@ class DataExportService(
             mapOf(
                 "dayStart" to it.dayStart.toString(), "dayEnd" to it.dayEnd.toString(),
                 "bufferMinutes" to it.bufferMinutes.toString(), "speechOutputEnabled" to it.speechOutputEnabled.toString(),
+                "dateOrder" to it.dateOrder.name, "reminderLeadMinutes" to it.reminderLeadMinutes.toString(),
+                "onboardingDone" to it.onboardingDone.toString(),
             )
         },
     )

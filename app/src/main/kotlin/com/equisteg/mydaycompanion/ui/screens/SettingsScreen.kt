@@ -42,6 +42,9 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider()
+        YourDaySection(state, viewModel::onPreferencesChange)
+
+        HorizontalDivider()
         SecuritySection(state, viewModel::onSecuritySettingsChange, viewModel::onSaveChallenges, viewModel::onRemoveChallenges)
 
         HorizontalDivider()

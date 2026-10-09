@@ -23,16 +23,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.security.ApprovalStep
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
+import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import com.equisteg.mydaycompanion.ui.screens.PlanScreen
 import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 
 enum class Destination(val label: String, val icon: ImageVector) {
     PLAN("My day", Icons.Filled.DateRange),
     HISTORY("History", Icons.Filled.Info),
-    SETTINGS("Privacy", Icons.Filled.Settings),
+    SETTINGS("Settings", Icons.Filled.Settings),
 }
 
 @Composable
@@ -43,6 +45,12 @@ fun AppNavigation(viewModel: MainViewModel) {
     if (state.locked) {
         Scaffold { padding -> LockScreen(state, viewModel::onUnlockRequested, viewModel::onPanicWipe, Modifier.padding(padding)) }
         state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
+        return
+    }
+
+    if (state.showOnboarding) {
+        Scaffold { padding -> OnboardingScreen(state, viewModel::onFinishOnboarding, viewModel::onSaveChallenges, Modifier.padding(padding)) }
+        ApprovalDialogs(viewModel, state)
         return
     }
 
@@ -72,6 +80,12 @@ fun AppNavigation(viewModel: MainViewModel) {
         }
     }
 
+    ApprovalDialogs(viewModel, state)
+}
+
+/** The challenge question and the Confirm step of a pending approval, shown over any screen. */
+@Composable
+private fun ApprovalDialogs(viewModel: MainViewModel, state: UiState) {
     state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
 
     state.pending?.takeIf { it.steps.firstOrNull() == ApprovalStep.TAP }?.let { pending ->

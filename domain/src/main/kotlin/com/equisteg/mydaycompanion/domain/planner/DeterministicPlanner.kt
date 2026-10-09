@@ -19,7 +19,7 @@ import java.time.LocalTime
  * rather than silently squeezed in; fixed events are never moved.
  */
 class DeterministicPlanner : PlannerEngine {
-    override val version: String = "deterministic-planner/2"
+    override val version: String = "deterministic-planner/3"
 
     override fun plan(request: PlanRequest): DayPlan {
         val issues = mutableListOf<PlanIssue>()
@@ -48,9 +48,11 @@ class DeterministicPlanner : PlannerEngine {
         val taskBlocks = mutableListOf<PlanBlock>()
         val unscheduled = mutableListOf<String>()
 
+        // A task broken into subtasks is planned through its subtasks, so its time is not counted twice.
+        val parents = request.tasks.filter { it.parentId != null && it.status != TaskStatus.CANCELLED }.mapNotNull { it.parentId }.toSet()
         val candidates = request.tasks
             .withIndex()
-            .filter { it.value.status == TaskStatus.OPEN && (it.value.date == null || it.value.date == request.date) }
+            .filter { it.value.status == TaskStatus.OPEN && it.value.id !in parents && (it.value.date == null || it.value.date == request.date) }
             .sortedWith(
                 compareBy<IndexedValue<Task>>(
                     { if (it.value.deadline?.toLocalDate() == request.date) 0 else 1 },
