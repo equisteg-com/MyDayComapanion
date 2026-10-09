@@ -19,7 +19,7 @@
 | OQ-13 | EQUISTeG product-factory template location | RESOLVED | The target repo already carries the template; work was integrated with it | Nothing |
 | OQ-14 | Instrumented emulator test job for SQLCipher/Keystore in CI | NEEDS DECISION | Add at Phase 0 exit (free minutes) | Phase 0 exit |
 | D-01 | Monthly subscription price, and what is free vs paid (agent OS build doc §1.2, §13) | NEEDS DECISION | Full app built; billing not wired | Monetization |
-| D-02 | Allow Play Billing (it may add a network-related permission) and choose on-device or free-tier server purchase checks (§10.3) | NEEDS DECISION | Not built | Monetization |
+| D-02 | Allow Play Billing (it may add a network-related permission) and choose on-device or free-tier server purchase checks (§10.3) | DECIDED 2026-10-09 by the founder: (b) free server check — Play Billing plus a Cloudflare Worker on the free tier that verifies purchases and refunds through the Google Play Developer API. The paid tier may use `INTERNET` only for this check; the free tier stays offline. | Billing PR after PR 6; price waits on D-01 | Monetization |
 | D-03 | On-device LLM: Gemini Nano (ML Kit Prompt API, supported phones only) and/or Gemma via MediaPipe; cloud LLM (about US$0.27 per active user per month on Claude Haiku 5.5) never unless approved | NEEDS DECISION | Rule extractor v2 only | Better understanding of long sentences |
 | D-04 | App-only remote wipe through FCM + a free-tier Worker (needs INTERNET) | NEEDS DECISION | Not built; Find My Device erase guidance | Nothing |
 | D-05 | Direct phone-to-phone transfer (Nearby Connections) | NEEDS DECISION | Encrypted backup file + Quick Share/USB | Nothing |
