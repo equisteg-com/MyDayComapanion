@@ -1,0 +1,61 @@
+{
+  "_note": "Filled once for the whole company. VERIFY every value before the first product.",
+  "publisherName": "Equisteg",
+  "developerEmail": "support@equisteg.com",
+  "developerWebsite": "https://equisteg.com",
+  "legalEntityCountry": "India",
+  "androidPackagePrefix": "com.equisteg",
+  "adsensePublisherId": "ca-pub-0000000000000000",
+  "admobPublisherId": "pub-0000000000000000",
+  "githubOrg": "equisteg-com",
+  "defaultRegion": "IN",
+  "defaultLanguages": [
+    "en"
+  ],
+  "hosting": {
+    "web": "cloudflare-workers static assets (apps/web/out served by apps/api Worker)",
+    "api": "cloudflare-workers (Hono) + D1/KV; R2 only at maturity Level 3",
+    "mobile": "expo eas (free) or local gradle builds",
+    "platform": "equisteg-platform Worker (shared payments/entitlement) via service binding"
+  },
+  "existingProducts": [
+    {
+      "name": "Example Product",
+      "domain": "example-product.com",
+      "url": "https://example-product.com",
+      "playUrl": "<or not yet submitted>",
+      "category": "finance",
+      "domainRenewal": "YYYY-MM-DD (auto-renew on, company Cloudflare account)"
+    }
+  ],
+  "branches": {
+    "default": "development",
+    "flow": [
+      "development",
+      "staging",
+      "production"
+    ],
+    "environments": {
+      "development": "dev",
+      "staging": "staging",
+      "production": "production"
+    }
+  },
+  "payments": {
+    "web": "razorpay (India) or stripe — hosted checkout, test mode until Gate 9",
+    "android": "google-play-billing (react-native-iap), verified server-side",
+    "signup": "none — licence key + email magic link restore",
+    "email": "resend free"
+  },
+  "costPolicy": "zero-cost: free tiers or open source only; see docs/standards/zero-cost.md",
+  "repoVisibility": "private",
+  "domains": {
+    "perProduct": true,
+    "pattern": "each product has its own domain (apex, www redirects); dev/staging on *.workers.dev",
+    "registrar": "Cloudflare Registrar in the company (Equisteg) account, registrant org Equisteg, auto-renew on — bought by a founder",
+    "companySite": "https://equisteg.com",
+    "emailFrom": "no-reply@equisteg.com via Resend (free plan verifies 3 domains — never one per product)",
+    "supportEmail": "support@<domain> via Cloudflare Email Routing → developerEmail",
+    "attribution": "own product name/logo + 'A product by Equisteg' (footer, About, app About); Equisteg is the legal entity and JSON-LD publisher"
+  }
+}
