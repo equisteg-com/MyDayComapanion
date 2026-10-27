@@ -1,0 +1,8 @@
+# Maestro workspace config. Flows live in ./flows, data in ../testdata/mobile.
+# Every flow name starts with its TC ID (tests/cases/test-cases.xlsx → Mobile).
+flows:
+  - "flows/*"
+executionOrder:
+  continueOnFailure: true
+excludeTags:
+  - screenshots   # on demand: maestro test --include-tags screenshots tests/mobile/flows
