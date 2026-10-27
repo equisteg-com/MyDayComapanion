@@ -1,0 +1,30 @@
+{
+  "name": "product",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "check": "turbo run lint typecheck test build",
+    "security": "gitleaks detect --redact && npx --yes osv-scanner scan source -r .",
+    "test:web": "playwright test -c tests/web/playwright.config.ts",
+    "test:mobile": "maestro test tests/mobile",
+    "perf": "node tests/tools/perf.mjs",
+    "load": "node tests/tools/perf.mjs --load",
+    "test:preflight": "node tests/tools/preflight.mjs",
+    "lint:agents": "node tests/tools/lint-agents.mjs",
+    "test:guards": "node --test tests/tools/*.test.mjs",
+    "check:secrets": "node tests/tools/check-forbidden-files.mjs",
+    "prepare": "node tests/tools/install-githooks.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.11.9",
+    "@playwright/test": "^1.64.1"
+  },
+  "packageManager": "npm@10.9.0"
+}

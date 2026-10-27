@@ -1,0 +1,55 @@
+// Copy to apps/api/wrangler.jsonc and replace <slug>, <domain> (the product's own domain, e.g. productname.com) and every <id>.
+// One Worker serves the static web app (apps/web/out) AND the API (/api/v1/*).
+// Environments map to branches: development -> dev, staging -> staging, production -> production.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "<slug>",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  // Static files are served BEFORE the Worker runs (no Worker request is billed for them, so pages stay free and keep
+  // working when the API is down); only /api/* runs the Worker. Consequence: the Worker cannot redirect or add headers
+  // for pages — security headers go in apps/web/public/_headers and www -> apex is a zone Redirect Rule (see routes below).
+  "assets": { "directory": "../web/out", "binding": "ASSETS", "not_found_handling": "404-page", "run_worker_first": ["/api/*"] },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+
+  "env": {
+    "dev": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-dev", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      // Workers Rate Limiting bindings (free): strict = abusable forms (5/min per IP per route), api = everything else.
+      // namespace_id is any integer unique in the account: use a different pair per environment and per product.
+      "ratelimits": [{ "name": "RL_STRICT", "namespace_id": "<n>", "simple": { "limit": 5, "period": 60 } }, { "name": "RL_API", "namespace_id": "<n+1>", "simple": { "limit": 120, "period": 60 } }],
+      "vars": { "ENVIRONMENT": "dev", "PAYMENT_MODE": "test", "SUPPORT_EMAIL": "support@equisteg.com" }
+      // no cron in dev: only 5 Cron Triggers per account on the Free plan
+    },
+    "staging": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-staging", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "ratelimits": [{ "name": "RL_STRICT", "namespace_id": "<n>", "simple": { "limit": 5, "period": 60 } }, { "name": "RL_API", "namespace_id": "<n+1>", "simple": { "limit": 120, "period": 60 } }],
+      // GITHUB_REPO on staging too: the game day opens "incident-staging" issues (phase 9b). No cron on staging: the game day
+      // calls POST /api/v1/ops/run-watchdog instead.
+      "vars": { "ENVIRONMENT": "staging", "PAYMENT_MODE": "test", "GITHUB_REPO": "equisteg-com/<slug>", "SUPPORT_EMAIL": "support@equisteg.com" }
+    },
+    "production": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-prod", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "ratelimits": [{ "name": "RL_STRICT", "namespace_id": "<n>", "simple": { "limit": 5, "period": 60 } }, { "name": "RL_API", "namespace_id": "<n+1>", "simple": { "limit": 120, "period": 60 } }],
+      "vars": { "ENVIRONMENT": "production", "PAYMENT_MODE": "live", "GITHUB_REPO": "equisteg-com/<slug>", "CANONICAL_HOST": "<domain>", "SUPPORT_EMAIL": "support@equisteg.com" },
+      // RELEASE is set per deploy by deploy.yml (--var RELEASE:<sha>)
+      // every 5 min: watchdog (detect + contain) and the email outbox retry; the 01:00 UTC run also does the daily jobs
+      // (expire entitlements, unbind devices, reminders, Play voided purchases, cleanup). One trigger = one of the 5 per account.
+      "triggers": { "crons": ["*/5 * * * *"] },
+      // The product's own domain (its Cloudflare zone must exist first). Apex only: static files skip the Worker, so
+      // www -> apex is a free zone Redirect Rule (docs/runbooks/domain.md, written in phase 4); the Worker still 301s any
+      // non-canonical host on /api/*.
+      "routes": [{ "pattern": "<domain>", "custom_domain": true }]
+    }
+  }
+  // Secrets (never in this file): npx wrangler secret put <NAME> --env <env>
+  //   PAYMENT_WEBHOOK_SECRET, PAYMENT_KEY_ID, PAYMENT_KEY_SECRET, SESSION_SIGNING_KEY,
+  //   EMAIL_ENC_KEY, LOOKUP_PEPPER, RESEND_API_KEY, TURNSTILE_SECRET, GOOGLE_PLAY_SA_KEY, SENTRY_DSN (optional),
+  //   OPS_TOKEN (ops summary + game day; same value as the GitHub secret), GITHUB_ISSUES_TOKEN (incident issues; Issues read/write only)
+  // Local development: put local values in apps/api/.dev.vars (git-ignored), never here.
+}
