@@ -1,97 +1,42 @@
-# Equisteg Product Template
+# MyDayCompanion
 
-One private repository per product, created from this template. Web (Next.js), Android (React Native + Expo) and API (Cloudflare Worker) in one monorepo, built by Claude Code from a prototype, deployed for ₹0 on Cloudflare.
+A private, local-first Android day planner with an on-device assistant. You type what your day looks like; it
+pulls out the tasks, proposes a plan around your fixed events, and only acts after you confirm.
 
-## The flow in one picture
+Status: **Phase 0 foundation** (internal, not distributed). See [PROGRESS.md](PROGRESS.md).
+
+## Principles
+
+- No backend, no cloud AI, no accounts, no analytics, no ads, no paid services. The app has no INTERNET permission.
+- AI output is untrusted. A deterministic policy decides what any tool may do; risky actions need a confirmation
+  bound to the exact arguments.
+- Everything is stored in an encrypted on-device database (Room + SQLCipher, key wrapped by Android Keystore).
+  Backups are off. Full export and verified full deletion are built in.
+
+## Layout
 
 ```
-Idea → HTML / Claude artifact  →  inputs/  →  /newapp  →  PR into development
-                                                  │
-        development ──PR──▶ staging ──PR──▶ production      (each merge deploys automatically)
-             dev env            staging env         product's own domain
-After staging deploys: /test  → bug log + report → "which bugs should I fix?"
-Later:  /change <plain English>   ·   /update <plain English>
+domain/   pure Kotlin: planner, task extraction, AI router, tools, authorization policy, memory, audit, privacy
+data/     Android library: Room schema, SQLCipher, Keystore key, device state, permissions, export targets
+app/      Jetpack Compose UI (Plan, History, Settings)
+docs/     product/ (build docs), prebuild/ (precheck evidence 00-12), standards/, release/ …
+tests/    test-cases.xlsx, bug-log.xlsx, golden AI eval data, test case notes
 ```
 
-## Structure
+`apps/`, `packages/` and the npm/turbo files come from the EQUISTeG product template and are placeholders for this
+product; see [docs/standards/template-overview.md](docs/standards/template-overview.md).
+
+## Build and test
+
+JDK 17+ and the Android SDK (compileSdk 36) are needed.
 
 ```
-product/
-├── apps/
-│   ├── web/        → Next.js + TypeScript, static export (SEO-ready HTML)
-│   ├── mobile/     → React Native + Expo (Android first)
-│   └── api/        → Cloudflare Worker (Hono) + D1/KV — payments, entitlement, cron
-├── packages/
-│   ├── shared-types/  → zod schemas + types shared by web, mobile, api
-│   ├── api-client/    → typed fetch client
-│   └── design-tokens/ → colors/spacing/type (created per product)
-├── tests/
-│   ├── cases/      → test-cases.xlsx (one row per step + expected result; functional + Non-functional)
-│   ├── bugs/       → bug-log.xlsx (every failure found on staging, status, fix PR)
-│   ├── tools/      → result collector + bug-log helper
-│   ├── web/        → Playwright
-│   ├── mobile/     → Maestro
-│   ├── testdata/   → web/, mobile/, shared/
-│   └── load/       → k6
-├── docs/standards/ → zero-cost limits, cron jobs, self-healing, risks, agent reviews, product categories, repo security
-├── docs/reviews/   → saved specialist reviews (one file per branch review)
-├── docs/marketing/ → positioning, launch plan, content calendar, post and email drafts, monthly reports (/market)
-├── infra/          → wrangler.example.jsonc, env templates
-├── inputs/         → drop the prototype here
-├── prompts/        → AUDIT_PROMPT.md for existing products
-├── .claude/        → /newapp, /change, /update, /test, /review, /market, reviewer agents, secrets guard + permissions
-├── .githooks/      → pre-commit secret check (enabled by npm install)
-├── .github/        → CI, deploy, mobile, scheduled workflows, templates
-├── CLAUDE.md       → rules Claude follows in every session
-└── publisher.config.json → company details (filled once)
+./gradlew test lintDebug assembleDebug
 ```
 
-## Start a new product in VS Code (step by step)
+The golden AI evaluation report is written to `domain/build/reports/ai-eval/task-extraction.md`.
 
-One-time on each laptop:
-1. Install **Git**, **Node.js 22 LTS**, **VS Code** and the **GitHub CLI** (`gh auth login`).
-2. In VS Code open Extensions (Ctrl+Shift+X), search **Claude Code** (publisher Anthropic) and install it; sign in when asked. The other recommended extensions are suggested automatically from `.vscode/extensions.json`.
+## Working on this repo
 
-Each product:
-1. GitHub → `equisteg-com/Repo-Template-equisteg-com` → **Use this template → Create a new repository** → owner `equisteg-com`, name = product, **Private**.
-2. VS Code → Command Palette (Ctrl+Shift+P) → **Git: Clone** → pick the new repo → open it.
-3. Terminal (Ctrl+`) → `npm install`.
-4. Copy the prototype file (`.html`, or the Claude artifact downloaded as `.html/.jsx/.tsx`) into `inputs/`.
-5. Open Claude Code (the Claude icon in the side bar, or Ctrl+Esc) and type **`/newapp`**. Use **`/newapp review`** to approve scope, preview and the PR step by step.
-6. Before `/newapp`, create your branch: `git switch development && git pull && git switch -c feature/<name>` (Claude works only on the branch you created and never makes its own). Claude asks one question (the stack, with a recommended option), then builds on your branch, runs every check and opens a PR into `development`.
-7. Merge the PR → `dev` deploys. Open a PR `development → staging` → merge → staging deploys and the full staging test suite runs (web: Playwright functional + accessibility, Lighthouse, k6 smoke, OWASP ZAP; Android: APK built against staging + Maestro on an emulator). `/test` first checks what is installed and configured, shows what is missing with the free fix, and asks for the details it needs (staging URL, test-mode payments, Play licence tester). Then type **`/test`** — Claude logs every failure in `tests/bugs/bug-log.xlsx`, writes a report in `docs/test-reports/`, and asks which bugs to fix. Open `staging → production` → a founder listed in `RELEASE_APPROVERS` merges → production deploys, is health-checked, tagged, or rolled back automatically.
-
-Later changes, from the same Claude Code chat:
-- **`/change`** followed by the change in plain English, e.g. `/change make the result card show 2 decimals and move Share below it`.
-- **`/update`** followed by the new feature, e.g. `/update add a history screen that keeps the last 20 conversions offline`.
-- **`npm run perf`** (page speed + small load check) and **`npm run load -- stress`** (or `load`, `spike`, `soak`) — performance and load testing on staging in one command; see [tests/load/README.md](./tests/load/README.md).
-- **`/test`** after a staging deploy (or `/test dev`, `/test fresh`, `/test retest BUG-0004`): runs or collects the automation, updates the bug log and test-case statuses, gives a release recommendation, and asks what to fix.
-- **`/review`** any time on your branch (or `/review security`, `/review payments report`, `/review release`): specialist reviewer agents check the work in parallel, Claude fixes what they find, and the review is saved in `docs/reviews/`.
-- **`/market`** (or `/market launch`, `content`, `listing`, `social`, `email`, `report`): zero-cost marketing plans and ready-to-post drafts in `docs/marketing/`, checked for truthful, allowed claims. Claude never posts anything itself; you publish the drafts.
-
-## Product categories
-Finance, games, utility and tech products each have extra rules (money maths and disclaimers, fair game monetisation and child safety, minimal permissions and on-device processing, safe handling of pasted data) in [docs/standards/product-categories.md](./docs/standards/product-categories.md). `/newapp` picks the category from the prototype and follows its rules; anything outside these four categories, or a red line such as lending or real-money games, stops for a founder's decision.
-
-## Keeping code and secrets safe
-Repositories are private, secrets never enter git (a pre-commit check and Gitleaks in CI), and a guard stops Claude from reading, printing or sending secrets even if a hidden instruction in a file or web page asks it to. Dependabot watches dependencies, and CI actions are pinned. One-time GitHub, Cloudflare and account settings (2FA, no forking of private repos, token rules) are listed click by click in [docs/standards/repo-security.md](./docs/standards/repo-security.md). To report a problem: [SECURITY.md](./SECURITY.md).
-
-## Specialist reviewers
-Every command ends with a second pair of eyes. Twelve read-only reviewer agents in [`.claude/agents/`](./.claude/agents/README.md) each check one thing (code, scope, security, payments, accessibility and UI, SEO and AI search, store policy, category rules, marketing claims, test traceability, the production go/no-go, incident root cause). They never edit files: Claude fixes what they report and asks them again, at most three rounds. Their verdicts go in the PR. Rules: [docs/standards/agent-reviews.md](./docs/standards/agent-reviews.md). `npm run lint:agents` (also in CI) checks that every agent and skill is valid and every reference resolves.
-
-Once live, production looks after itself ([self-healing](./docs/standards/self-healing.md)): a watchdog checks every 5 minutes; a bad release is rolled back automatically; a failing feature is switched off automatically; every incident becomes a GitHub issue that Claude debugs on its own and answers with a tested fix PR. Your only job is to merge that PR. Every risk or issue Claude reports comes with how it is tackled and what is left ([rule](./docs/standards/risks-and-issues.md)).
-
-Long build? When Claude says so, type `/clear` then `/newapp` — it resumes from `PROGRESS.md`.
-Existing products: open that repo and paste `prompts/AUDIT_PROMPT.md` into Claude Code.
-
-## One-time company setup
-0. Apply the account security settings in [docs/standards/repo-security.md](./docs/standards/repo-security.md) §3 (2FA, member privileges, token rules, Actions policy).
-1. Mark this repository as a template: Settings → General → **Template repository**.
-2. GitHub org `equisteg-com` → Teams → create `build-team`, add the founders.
-3. Cloudflare (free account) → Workers & Pages → create an API token with the **Edit Cloudflare Workers** template + D1 Edit, scoped to the Equisteg account.
-4. In each product repo: Settings → Secrets and variables → Actions → secrets `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`; variables `RELEASE_APPROVERS`, `DEV_URL`, `STAGING_URL`, `PRODUCTION_URL`.
-5. Verify `publisher.config.json` (publisher IDs, emails, package prefix, payment provider).
-
-GitHub organization + Cloudflare: yes, it works. Deploys run from GitHub Actions with the API token, so the org needs nothing extra. If you prefer Cloudflare's own Git builds (Workers Builds, 3,000 free build minutes/month), an org owner must install the **Cloudflare Workers and Pages** GitHub app on `equisteg-com` and limit it to the product repos.
-
-## Rules
-See [CLAUDE.md](./CLAUDE.md) and [CONTRIBUTING.md](./CONTRIBUTING.md). Zero-cost limits: [docs/standards/zero-cost.md](./docs/standards/zero-cost.md). Cron jobs: [docs/standards/cron-jobs.md](./docs/standards/cron-jobs.md). Reviews: [docs/standards/agent-reviews.md](./docs/standards/agent-reviews.md).
+Read [CLAUDE.md](CLAUDE.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Work happens on `feature/*` branches with a PR into
+`development`, then `staging`, then `production`.

@@ -1,0 +1,91 @@
+package com.equisteg.mydaycompanion
+
+import androidx.compose.ui.test.ComposeTimeoutException
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.test.core.app.ApplicationProvider
+import com.equisteg.mydaycompanion.data.privacy.ContentResolverExportTargets
+import com.equisteg.mydaycompanion.domain.testing.TestGraph
+import com.equisteg.mydaycompanion.navigation.AppNavigation
+import com.equisteg.mydaycompanion.ui.MainViewModel
+import kotlinx.coroutines.runBlocking
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
+
+private class TestServices(val graph: TestGraph) : AppServices {
+    override val clock = graph.clock
+    override val orchestrator = graph.orchestrator
+    override val tasks = graph.tasks
+    override val plans = graph.plans
+    override val audit = graph.audit
+    override val flags = com.equisteg.mydaycompanion.domain.config.FeatureFlags()
+    override val exportTargets = ContentResolverExportTargets(ApplicationProvider.getApplicationContext<android.app.Application>().contentResolver)
+}
+
+@RunWith(RobolectricTestRunner::class)
+// A phone-sized screen so the saved plan below the input is laid out by the LazyColumn.
+@Config(sdk = [35], qualifiers = "w411dp-h891dp")
+class MagicMomentUiTest {
+    @get:Rule
+    val compose = createComposeRule()
+
+    private val graph = TestGraph()
+    private val viewModel = MainViewModel(TestServices(graph))
+
+    @Test
+    fun `type a day, review the proposal, add it, see the saved plan`() {
+        compose.setContent { AppNavigation(viewModel) }
+
+        compose.onNodeWithTag("input").performTextInput(
+            "Tomorrow I need to finish the proposal, call Raj, work out, buy groceries, and I have a meeting at 11.",
+        )
+        compose.onNodeWithTag("submit").performClick()
+        waitFor("proposal") { compose.onAllNodes(hasTestTag("proposal")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(0, runBlocking { graph.tasks.count() }, "nothing saved before confirmation")
+
+        compose.onNodeWithTag("accept").assertIsEnabled().performClick()
+        waitFor("saved plan for 2026-10-07") { compose.onAllNodes(hasTestTag("plan-2026-10-07")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithText("Finish the proposal").assertIsDisplayed()
+        assertEquals(4, runBlocking { graph.tasks.count() })
+    }
+
+    /** Like waitUntil, but a timeout reports what the screen and view model actually held. */
+    private fun waitFor(what: String, condition: () -> Boolean) {
+        try {
+            compose.waitUntil(5_000, condition)
+        } catch (e: ComposeTimeoutException) {
+            val s = viewModel.state.value
+            throw AssertionError(
+                "Timed out waiting for $what. message=${s.message} busy=${s.busy} selectedDate=${s.selectedDate} " +
+                    "proposal=${s.proposal != null} plan=${viewModel.plan.value?.let { "${it.date} blocks=${it.blocks.size}" }} " +
+                    "tasks=${runBlocking { graph.tasks.count() }} plans=${runBlocking { graph.plans.count() }}",
+                e,
+            )
+        }
+    }
+
+    @Test
+    fun `delete everything asks first and then wipes local data`() {
+        runBlocking {
+            graph.tasks.upsert(listOf(com.equisteg.mydaycompanion.domain.model.Task("t", "x", createdAt = graph.clock.instant())))
+        }
+        compose.setContent { AppNavigation(viewModel) }
+        compose.onNodeWithTag("nav-SETTINGS").performClick()
+        compose.onNodeWithTag("delete-all").performClick()
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("confirm")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals(1, runBlocking { graph.tasks.count() }, "nothing deleted before confirmation")
+
+        compose.onNodeWithTag("confirm").performClick()
+        compose.waitUntil(5_000) { runBlocking { graph.tasks.count() } == 0 }
+    }
+}

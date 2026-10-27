@@ -75,3 +75,14 @@ __pycache__/
 .cache/
 tests/tools/tmp/
 apps/web/next-env.d.ts
+
+# Gradle / Android (MyDayCompanion native app)
+.gradle/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+*.iml
+*.keystore
+keystore.properties
+gradle.lockfile

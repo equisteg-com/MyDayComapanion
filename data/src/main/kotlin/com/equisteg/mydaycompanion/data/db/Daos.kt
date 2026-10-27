@@ -1,0 +1,92 @@
+package com.equisteg.mydaycompanion.data.db
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface TaskDao {
+    @Query("SELECT * FROM tasks ORDER BY createdAt") fun observeAll(): Flow<List<TaskEntity>>
+    @Query("SELECT * FROM tasks ORDER BY createdAt") suspend fun all(): List<TaskEntity>
+    @Query("SELECT * FROM tasks WHERE id = :id") suspend fun get(id: String): TaskEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(items: List<TaskEntity>)
+    @Query("DELETE FROM tasks WHERE id = :id") suspend fun delete(id: String)
+    @Query("DELETE FROM tasks") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM tasks") suspend fun count(): Int
+}
+
+@Dao
+interface FixedEventDao {
+    @Query("SELECT * FROM fixed_events WHERE date = :date ORDER BY start") fun observeForDate(date: String): Flow<List<FixedEventEntity>>
+    @Query("SELECT * FROM fixed_events WHERE date = :date ORDER BY start") suspend fun forDate(date: String): List<FixedEventEntity>
+    @Query("SELECT * FROM fixed_events ORDER BY date, start") suspend fun all(): List<FixedEventEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(items: List<FixedEventEntity>)
+    @Query("DELETE FROM fixed_events") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM fixed_events") suspend fun count(): Int
+}
+
+@Dao
+abstract class PlanDao {
+    @Query("SELECT * FROM plans WHERE date = :date") abstract fun observePlan(date: String): Flow<PlanEntity?>
+    @Query("SELECT * FROM plans WHERE date = :date") abstract suspend fun plan(date: String): PlanEntity?
+    @Query("SELECT * FROM plans ORDER BY date") abstract suspend fun allPlans(): List<PlanEntity>
+    @Query("SELECT * FROM plan_blocks WHERE date = :date ORDER BY position") abstract suspend fun blocks(date: String): List<PlanBlockEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) abstract suspend fun insertPlan(plan: PlanEntity)
+    @Insert(onConflict = OnConflictStrategy.REPLACE) abstract suspend fun insertBlocks(blocks: List<PlanBlockEntity>)
+    @Query("DELETE FROM plan_blocks WHERE date = :date") abstract suspend fun deleteBlocks(date: String)
+    @Query("DELETE FROM plans") abstract suspend fun deleteAllPlans()
+    @Query("DELETE FROM plan_blocks") abstract suspend fun deleteAllBlocks()
+    @Query("SELECT (SELECT COUNT(*) FROM plans) + (SELECT COUNT(*) FROM plan_blocks)") abstract suspend fun count(): Int
+
+    @Transaction
+    open suspend fun replace(plan: PlanEntity, blocks: List<PlanBlockEntity>) {
+        deleteBlocks(plan.date)
+        insertPlan(plan)
+        insertBlocks(blocks)
+    }
+
+    @Transaction
+    open suspend fun deleteAll() {
+        deleteAllBlocks()
+        deleteAllPlans()
+    }
+}
+
+@Dao
+interface RoutineDao {
+    @Query("SELECT * FROM routines ORDER BY createdAt") suspend fun all(): List<RoutineEntity>
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: RoutineEntity)
+    @Query("DELETE FROM routines") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM routines") suspend fun count(): Int
+}
+
+@Dao
+interface MemoryDao {
+    @Query("SELECT * FROM memories ORDER BY createdAt") suspend fun all(): List<MemoryEntity>
+    @Query("SELECT * FROM memories WHERE id = :id") suspend fun get(id: String): MemoryEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: MemoryEntity)
+    @Query("DELETE FROM memories WHERE id = :id") suspend fun delete(id: String)
+    @Query("DELETE FROM memories") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM memories") suspend fun count(): Int
+}
+
+@Dao
+interface AuditDao {
+    @Insert suspend fun insert(entry: AuditEntity)
+    @Query("SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT :limit") suspend fun recent(limit: Int): List<AuditEntity>
+    @Query("SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT :limit") fun observeRecent(limit: Int): Flow<List<AuditEntity>>
+    @Query("SELECT * FROM audit_log ORDER BY timestamp") suspend fun all(): List<AuditEntity>
+    @Query("DELETE FROM audit_log") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM audit_log") suspend fun count(): Int
+}
+
+@Dao
+interface PreferencesDao {
+    @Query("SELECT * FROM preferences WHERE id = 1") suspend fun get(): PreferencesEntity?
+    @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun set(prefs: PreferencesEntity)
+    @Query("DELETE FROM preferences") suspend fun deleteAll()
+    @Query("SELECT COUNT(*) FROM preferences") suspend fun count(): Int
+}

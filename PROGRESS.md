@@ -1,0 +1,27 @@
+# Progress
+
+## 2026-10-06 — Precheck and Phase 0 foundation
+
+- Renamed product from MyDayGuide to MyDayCompanion across all documents.
+- Ran `/precheck`; evidence in `docs/prebuild/00`–`12`. Founder approved Gate P0 with documented defaults.
+- Built Phase 0 foundation on `feature/phase0-foundation`:
+  - Gradle multi-module project: `domain` (pure Kotlin), `data` (Android library), `app` (Compose).
+  - Deterministic planner + plan validator; rule-based on-device task extractor behind the `AiModelProvider` abstraction;
+    inference router with energy policy; versioned prompts; strict structured-output validation.
+  - Agent orchestrator with tool allowlist, deterministic authorization policy, confirmations bound to exact arguments,
+    verification and privacy-minimised audit log.
+  - Memory model with poisoning defences and retention.
+  - Room schema v1 on SQLCipher with a Keystore-wrapped key; backups disabled; no INTERNET permission.
+  - Full export (JSON via system file picker) and verified full deletion.
+  - Tests: unit, Room integration (Robolectric), Compose UI, security, privacy, golden AI evaluation with thresholds.
+  - CI: secret scan, wrapper validation, tests, lint, debug build, APK permission check, dependency scan (report-only).
+
+- Integrated with the EQUISTeG product template already in the repo (kept its rules, CI and workbooks; Android
+  test cases TC-M-101..107 and TC-N-101..104 added to `tests/cases/test-cases.xlsx`).
+
+## Next (Phase 0 exit → Phase 1)
+
+- Room schema v1 committed (`data/schemas/`); CI fails on schema drift.
+- On-device tests for SQLCipher + Keystore (instrumented, emulator in CI).
+- Founder decisions in `docs/prebuild/12-open-questions.md` (brand/domain/trademark, Play account, branch protection).
+- Phase 1 capabilities, one at a time behind flags: reminders, voice, calendar read, routines, memory review UI.
