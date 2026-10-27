@@ -1,0 +1,34 @@
+{
+  "name": "product",
+  "private": true,
+  "claudeKit": {
+    "repo": "equisteg-com/claude-kit",
+    "ref": "main"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "build": "turbo run build",
+    "check": "turbo run lint typecheck test build",
+    "security": "gitleaks detect --redact && npx --yes osv-scanner scan source -r .",
+    "test:web": "playwright test -c tests/web/playwright.config.ts",
+    "test:mobile": "maestro test tests/mobile",
+    "perf": "node tests/tools/perf.mjs",
+    "load": "node tests/tools/perf.mjs --load",
+    "test:preflight": "node tests/tools/preflight.mjs",
+    "kit": "node tests/tools/kit.mjs",
+    "kit:check": "node .claude/tools/lint-agents.mjs && node --test .claude/tools/*.test.mjs",
+    "check:secrets": "node tests/tools/check-forbidden-files.mjs",
+    "prepare": "node tests/tools/install-githooks.mjs"
+  },
+  "devDependencies": {
+    "turbo": "^2.0.0",
+    "@playwright/test": "^1.56.0"
+  },
+  "packageManager": "npm@10.9.0"
+}

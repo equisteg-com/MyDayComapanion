@@ -1,0 +1,129 @@
+name: Mobile
+
+# Builds an Android APK on the runner (free, no EAS build credits) pointed at the
+# chosen environment's API, and runs every Maestro flow on an emulator.
+# - PRs into staging that touch mobile code: tests against dev.
+# - Called by staging-tests.yml after every staging deploy: tests against staging.
+# - Manual: pick dev or staging (never production).
+on:
+  pull_request:
+    branches: [staging]
+    paths:
+      - apps/mobile/**
+      - tests/mobile/**
+      - packages/**
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: staging
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'dev | staging (never production)'
+        default: staging
+
+concurrency:
+  group: mobile-${{ github.ref }}-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  maestro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Check the mobile app exists
+        id: has
+        run: test -f apps/mobile/app.config.ts && echo "ok=true" >> "$GITHUB_OUTPUT" || echo '::notice::apps/mobile not created yet'
+      - name: Pick the API the app talks to
+        if: steps.has.outputs.ok == 'true'
+        id: env
+        env:
+          URL_DEV: ${{ vars.DEV_URL }}
+          URL_STAGING: ${{ vars.STAGING_URL }}
+          TARGET: ${{ inputs.environment || 'dev' }}
+        run: |
+          case "$TARGET" in
+            dev) url="$URL_DEV" ;;
+            staging) url="$URL_STAGING" ;;
+            *) echo "::error::only dev or staging may be tested"; exit 1 ;;
+          esac
+          [ -n "$url" ] || echo "::warning::no URL variable for this environment; the app uses its built-in default"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - if: steps.has.outputs.ok == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: npm
+      - if: steps.has.outputs.ok == 'true'
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - if: steps.has.outputs.ok == 'true'
+        run: npm ci
+      # Release variant: the JS bundle is inside the APK (a debug APK needs a Metro
+      # server). Expo's prebuild signs release builds with the debug key, so no secrets.
+      - name: Build APK
+        if: steps.has.outputs.ok == 'true'
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_URL: ${{ steps.env.outputs.url }}
+          EXPO_PUBLIC_APP_ENV: ${{ inputs.environment || 'dev' }}
+        run: |
+          npx expo prebuild --platform android --no-install
+          cd android && ./gradlew assembleRelease
+      - name: MobSF static scan of the APK (OWASP MASVS)
+        if: steps.has.outputs.ok == 'true'
+        # Free, self-hosted MobSF in Docker for this job only; the key never leaves the runner.
+        # Report: artifact results-mobile/mobsf-*.json. High findings are triaged with /test into the bug log.
+        continue-on-error: true
+        env:
+          MOBSF_KEY: ci-only-${{ github.run_id }}
+        run: |
+          mkdir -p test-results
+          docker run -d --name mobsf -p 8000:8000 -e MOBSF_API_KEY="$MOBSF_KEY" opensecurity/mobile-security-framework-mobsf:latest
+          for i in $(seq 1 60); do curl -fs http://localhost:8000/ >/dev/null && break; sleep 5; done
+          apk=apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+          hash=$(curl -fsS -F "file=@$apk" -H "Authorization: $MOBSF_KEY" http://localhost:8000/api/v1/upload | jq -r .hash)
+          curl -fsS -X POST --data "hash=$hash" -H "Authorization: $MOBSF_KEY" http://localhost:8000/api/v1/scan > /dev/null
+          curl -fsS -X POST --data "hash=$hash" -H "Authorization: $MOBSF_KEY" http://localhost:8000/api/v1/report_json > test-results/mobsf-report.json
+          curl -fsS -X POST --data "hash=$hash" -H "Authorization: $MOBSF_KEY" http://localhost:8000/api/v1/scorecard > test-results/mobsf-scorecard.json
+          jq '{security_score, high: (.high | length), warning: (.warning | length)}' test-results/mobsf-scorecard.json | tee test-results/mobsf-summary.json
+          docker rm -f mobsf
+      - if: steps.has.outputs.ok == 'true'
+        # pinned release + checksum instead of piping an install script into bash
+        env:
+          MAESTRO_VERSION: '2.11.0'
+          MAESTRO_SHA256: 5384593cb4e7a106489e75a821d157dd43f4e438df6bc308b72e82c685e1283a
+        run: |
+          curl -fsSL -o /tmp/maestro.zip "https://github.com/mobile-dev-inc/maestro/releases/download/cli-$MAESTRO_VERSION/maestro.zip"
+          echo "$MAESTRO_SHA256  /tmp/maestro.zip" | sha256sum -c -
+          unzip -q /tmp/maestro.zip -d /tmp && mkdir -p "$HOME/.maestro" && cp -r /tmp/maestro/. "$HOME/.maestro/"
+      - name: Enable KVM
+        if: steps.has.outputs.ok == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Run Maestro flows
+        if: steps.has.outputs.ok == 'true'
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: |
+            adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+            mkdir -p test-results
+            $HOME/.maestro/bin/maestro test tests/mobile --format junit --output test-results/maestro.xml --debug-output test-results/maestro-debug -e API_URL=${{ steps.env.outputs.url }}
+            bash tests/tools/mobile-perf.sh   # cold start and APK size → test-results/mobile-perf.json (app id read from apps/mobile/app.config.ts)
+      - if: always() && steps.has.outputs.ok == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: results-mobile
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 30
