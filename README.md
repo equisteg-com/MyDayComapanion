@@ -3,7 +3,11 @@
 A private, local-first Android day planner with an on-device assistant. You type what your day looks like; it
 pulls out the tasks, proposes a plan around your fixed events, and only acts after you confirm.
 
-Status: **Phase 0 foundation** (internal, not distributed). See [PROGRESS.md](PROGRESS.md).
+Status: **Phase 0 foundation plus agent OS parts 1–3** (messy text and time understanding, app lock, approvals and
+real wipe, task editing, settings, first-run setup). Internal, not distributed. See [PROGRESS.md](PROGRESS.md).
+
+Which features need cloud infrastructure, and why: [docs/architecture/cloud-infrastructure.md](docs/architecture/cloud-infrastructure.md).
+Where this code came from: the "Consolidation" entry in [PROGRESS.md](PROGRESS.md).
 
 ## Principles
 
@@ -39,4 +43,5 @@ The golden AI evaluation report is written to `domain/build/reports/ai-eval/task
 ## Working on this repo
 
 Read [CLAUDE.md](CLAUDE.md) and [CONTRIBUTING.md](CONTRIBUTING.md). Work happens on `feature/*` branches with a PR into
-`development`, then `staging`, then `production`.
+`development`, then `staging`, then `production`. Until a founder creates `development` in this repository, PRs go
+into `main` (CI runs on both; see OQ-15 in `docs/prebuild/12-open-questions.md`).

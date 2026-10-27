@@ -5,9 +5,9 @@ name: CI
 # de-duplicated and time-limited.
 on:
   pull_request:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
   push:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
 
 concurrency:
   group: ci-${{ github.ref }}

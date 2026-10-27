@@ -1,5 +1,29 @@
 # Progress
 
+## 2026-10-27 — Consolidation into `equisteg-com/MyDayComapanion`
+
+Every earlier version of the app is combined here, with its commit history:
+- `equisteg-com/MyDayCompanion` `development` (cf01b3d): Phase 0 foundation on template v4, product override,
+  Android CI. Brought in as one commit, because that repository's history had been reset.
+- `equisteg-com/MyDayCompanion-archive` branch `claude/project-thread-d6ydk7` (PR #15, head 6357743): agent OS
+  parts 1–3. Its 10 commits were cherry-picked unchanged and applied without conflicts.
+- Checked and already included: the project-files bundle (`feature/phase0-foundation` a61b830 is an ancestor of
+  PR #15), the part 2 patch (same as commit 4be93fb), the prebuild documents (the repository copies are newer), the
+  agent OS build document (identical) and the MyDayGuide spec (renamed to `MYDAYCOMPANION_BUILD_SPEC.md`).
+- Not brought in: Dependabot version-bump PRs from both old repositories (Dependabot reopens them here) and the
+  `chore/private-kit` change, which `MyDayCompanion` had already reverted.
+
+Changes for this repository: `ci.yml` and `android.yml` also run on `main`, because this repository has no
+`development` branch yet (OQ-15). New `docs/architecture/cloud-infrastructure.md` answers which features need cloud
+infrastructure and why.
+
+Checks run here: `:domain:test` 83 tests pass; golden evaluation `task-extraction` v2 at 100% on all four metrics.
+The Android modules (`:data`, `:app`, lint, APK) need the Android SDK, which this environment cannot download; CI
+runs them on the PR.
+
+Next: agent OS part 4 (reminders, routines, standing approvals), part 5 (voice, calendar, device actions), part 6
+(memory review, backup and restore, widget), then billing once the price (D-01) is set.
+
 ## 2026-10-09 — Agent OS PR 3: task editing, settings, first-run setup
 
 - New tools: `tasks.update` (every editable field, subtasks follow the task to a new day), `tasks.delete` (with its

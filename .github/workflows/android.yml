@@ -6,9 +6,9 @@ name: Android
 # Android lint (static analysis) → debug APK → check the merged APK has no network permission.
 on:
   pull_request:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
   push:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
 
 concurrency:
   group: android-${{ github.ref }}
