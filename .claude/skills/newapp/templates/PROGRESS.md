@@ -1,0 +1,24 @@
+# PROGRESS — build state (Claude updates this; do not delete)
+
+| Phase | Status | Key outputs | Notes |
+|---|---|---|---|
+| 0 Intake & brief | ⏳ | | |
+| 1 Competitors & scope | ⏳ | | |
+| 2 Brand & design | ⏳ | | |
+| 3 HLD / LLD | ⏳ | | |
+| 4 Build | ⏳ | | |
+| 5 SEO & AI discoverability | ⏳ | | |
+| 6 Security & firewall | ⏳ | | |
+| 7 Test cases & automation | ⏳ | | |
+| 8 Performance & load | ⏳ | | |
+| 9 Manual & release pack | ⏳ | | |
+| 10 Self-review & report | ⏳ | | |
+
+## Assumptions
+-
+
+## NEEDS HUMAN
+-
+
+## Preview URL
+-

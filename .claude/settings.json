@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(node *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git checkout -b *)",
+      "Bash(git switch *)",
+      "Bash(git branch *)",
+      "Bash(pandoc *)",
+      "Bash(k6 *)",
+      "Bash(maestro *)",
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      "Bash(curl *)"
+    ],
+    "ask": [
+      "Bash(git push *)",
+      "Bash(gh pr create *)",
+      "Bash(vercel *)",
+      "Bash(eas build *)",
+      "Bash(eas submit *)",
+      "Bash(eas credentials *)"
+    ],
+    "deny": [
+      "Bash(git push origin main*)",
+      "Bash(git push -f *)",
+      "Bash(git push --force *)",
+      "Bash(gh pr merge *)",
+      "Read(./**/.env)",
+      "Read(./**/.env.local)",
+      "Read(./**/.env.production)",
+      "Read(./**/*.jks)",
+      "Read(./**/*.keystore)",
+      "Read(./**/*.p8)",
+      "Read(./**/*.p12)",
+      "Read(./**/*.key)"
+    ]
+  }
+}

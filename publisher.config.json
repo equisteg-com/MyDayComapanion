@@ -1,0 +1,20 @@
+{
+  "_note": "Filled once for the whole company. VERIFY every value before the first product.",
+  "publisherName": "Equisteg",
+  "developerEmail": "support@equisteg.com",
+  "developerWebsite": "https://equisteg.com",
+  "legalEntityCountry": "India",
+  "androidPackagePrefix": "com.equisteg",
+  "adsensePublisherId": "ca-pub-0000000000000000",
+  "admobPublisherId": "pub-0000000000000000",
+  "githubOrg": "equisteg-com",
+  "defaultRegion": "IN",
+  "defaultLanguages": ["en"],
+  "hosting": {
+    "web": "vercel-pro (Root Directory = apps/web)",
+    "api": "vercel functions by default; Render only if a long-running server is required"
+  },
+  "existingProducts": [
+    { "name": "Example Product", "url": "https://example.vercel.app", "category": "finance" }
+  ]
+}
