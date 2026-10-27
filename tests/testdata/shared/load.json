@@ -1,0 +1,16 @@
+{
+  "p95Ms": 500,
+  "maxErrorRate": 0.01,
+  "routes": [
+    {
+      "path": "/"
+    },
+    {
+      "path": "/robots.txt"
+    },
+    {
+      "path": "/sitemap.xml"
+    }
+  ],
+  "_help": "Add the product's key pages and every API route a user hits, e.g. { \"path\": \"/api/v1/health\", \"expect\": [200, 429] } or { \"path\": \"/api/v1/convert\", \"method\": \"POST\", \"body\": { \"from\": \"km\", \"to\": \"mi\", \"value\": 5 }, \"expect\": [200, 429] }. API routes list 429 too: the load runs from one IP, so the per-IP rate limit answering 429 is the protection working. Never real customer data."
+}

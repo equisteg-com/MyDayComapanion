@@ -1,0 +1,28 @@
+# Free on private repos. Opens grouped PRs into the default branch (development) so the normal
+# CI, review and staging tests run before anything reaches production. Never auto-merged.
+# Security alerts and security-update PRs must also be switched on once per repo:
+# Settings → Code security → Dependabot alerts: Enable, Dependabot security updates: Enable (NEEDS HUMAN).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types: [minor, patch]
+    commit-message:
+      prefix: chore
+      include: scope
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
+    groups:
+      actions:
+        patterns: ['*']
+    commit-message:
+      prefix: chore
+      include: scope
