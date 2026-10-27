@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs before every commit (enabled by `npm install` → tests/tools/install-githooks.mjs).
+# Blocks secret files and live credentials from entering git history, where deleting them later is not enough.
+node tests/tools/check-forbidden-files.mjs --staged || exit 1
+
+# Deeper scan when Gitleaks is installed (free; CI runs it on every PR anyway).
+if command -v gitleaks >/dev/null 2>&1; then
+  gitleaks protect --staged --redact --no-banner || exit 1
+fi

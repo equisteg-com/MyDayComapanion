@@ -1,0 +1,59 @@
+name: Auto-rollback
+
+# The production watchdog labels an incident "rollback-needed" when it starts within 60 min of a
+# deploy. This returns production to the previous Worker version (a known-good, already-approved
+# release), checks health, and reports on the issue. One rollback per incident.
+# Only the ops bot (vars.OPS_BOT_LOGIN) or a founder in vars.RELEASE_APPROVERS can trigger it.
+on:
+  issues:
+    types: [labeled]
+
+concurrency:
+  group: auto-rollback
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  rollback:
+    if: github.event.label.name == 'rollback-needed' && !contains(github.event.issue.labels.*.name, 'rolled-back')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Who asked?
+        run: |
+          who="${{ github.event.sender.login }}"
+          echo ",${{ vars.OPS_BOT_LOGIN }},${{ vars.RELEASE_APPROVERS }}," | grep -q ",$who," \
+            || { echo "::error::$who may not trigger a rollback"; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: production
+      - id: has
+        run: test -f apps/api/wrangler.jsonc && echo "ok=true" >> "$GITHUB_OUTPUT" || echo "::notice::no Worker to roll back"
+      - if: steps.has.outputs.ok == 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: npm
+      - if: steps.has.outputs.ok == 'true'
+        run: npm ci
+      - name: Roll back and check health
+        if: steps.has.outputs.ok == 'true'
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          npx wrangler rollback --env production --message "auto-rollback: incident #$ISSUE" --yes
+          sleep 20
+          status="unknown"
+          [ -n "$URL" ] && { curl -fsS "$URL/api/v1/health" >/dev/null && status="healthy" || status="STILL FAILING"; }
+          gh issue edit "$ISSUE" -R "$GITHUB_REPOSITORY" --add-label rolled-back --remove-label rollback-needed
+          gh issue comment "$ISSUE" -R "$GITHUB_REPOSITORY" --body "Rolled production back to the previous version. Health after rollback: **$status**. The fix will come as an auto-fix PR; the bad release stays out of production until it is merged."
+          [ "$status" != "STILL FAILING" ]

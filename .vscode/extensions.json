@@ -1,0 +1,13 @@
+{
+  "recommendations": [
+    "anthropic.claude-code",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "ms-playwright.playwright",
+    "expo.vscode-expo-tools",
+    "github.vscode-github-actions",
+    "redhat.vscode-yaml",
+    "mikestead.dotenv"
+  ]
+}

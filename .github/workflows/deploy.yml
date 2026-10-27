@@ -1,0 +1,202 @@
+name: Deploy
+
+# development -> dev environment, staging -> staging, production -> production.
+# Merging the PR into a branch IS the deployment trigger. Production additionally
+# requires the merger to be listed in the repository variable RELEASE_APPROVERS
+# (comma-separated GitHub logins), because GitHub Free cannot require reviewers
+# on private repos.
+on:
+  push:
+    branches: [development, staging, production]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'dev | staging | production'
+        required: true
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - id: env
+        env:
+          TARGET: ${{ inputs.environment || github.ref_name }}
+        run: |
+          case "$TARGET" in
+            development|dev) echo "name=dev" >> "$GITHUB_OUTPUT" ;;
+            staging)         echo "name=staging" >> "$GITHUB_OUTPUT" ;;
+            production)      echo "name=production" >> "$GITHUB_OUTPUT" ;;
+            *) echo "unknown environment"; exit 1 ;;
+          esac
+
+      - name: Check production approver
+        if: steps.env.outputs.name == 'production'
+        run: |
+          echo ",${{ vars.RELEASE_APPROVERS }}," | grep -q ",${{ github.actor }}," \
+            || { echo "@${{ github.actor }} is not in RELEASE_APPROVERS"; exit 1; }
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - name: Build (web pages are pre-rendered per environment)
+        env:
+          # public values only; dev/staging pages are noindex and use their workers.dev origin
+          # production = the product's own domain (repository variable PRODUCTION_URL, e.g. https://productname.com)
+          NEXT_PUBLIC_SITE_URL: ${{ steps.env.outputs.name == 'production' && vars.PRODUCTION_URL || (steps.env.outputs.name == 'staging' && vars.STAGING_URL || vars.DEV_URL) }}
+          NEXT_PUBLIC_NOINDEX: ${{ steps.env.outputs.name == 'production' && '0' || '1' }}
+          NEXT_PUBLIC_ADSENSE_ID: ${{ steps.env.outputs.name == 'production' && vars.ADSENSE_ID || '' }}
+          NEXT_PUBLIC_TURNSTILE_SITE_KEY: ${{ steps.env.outputs.name == 'production' && vars.TURNSTILE_SITE_KEY || '' }}
+          # Play listing URL once published (repository variable PLAY_URL): "Get the app" link + MobileApplication JSON-LD
+          NEXT_PUBLIC_PLAY_URL: ${{ vars.PLAY_URL }}
+          # release id in client error reports (watchdog groups errors by release)
+          NEXT_PUBLIC_RELEASE: ${{ github.sha }}
+        run: |
+          npm run build --if-present
+          # production: full SEO rules; dev/staging (NEXT_PUBLIC_NOINDEX=1): every page must be noindex and robots must block
+          npm run seo:audit --workspaces --if-present
+
+      - name: Skip if no Worker yet
+        id: has_api
+        run: test -f apps/api/wrangler.jsonc && echo "yes=true" >> "$GITHUB_OUTPUT" || echo "::notice::apps/api/wrangler.jsonc not found, nothing to deploy"
+
+      - name: Migrate D1 and deploy Worker
+        if: steps.has_api.outputs.yes == 'true'
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # payment tables live in D1 (apps/api/migrations); skipped when the config declares no D1
+          if grep -q '"d1_databases"' wrangler.jsonc; then
+            npx wrangler d1 migrations apply DB --env ${{ steps.env.outputs.name }} --remote
+          fi
+          # RELEASE tags every log line and error fingerprint with the commit (docs/standards/self-healing.md)
+          npx wrangler deploy --env ${{ steps.env.outputs.name }} --var RELEASE:${GITHUB_SHA::7}
+
+      - name: Health check (rolls back production on failure)
+        if: steps.has_api.outputs.yes == 'true'
+        working-directory: apps/api
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # repository variables: DEV_URL, STAGING_URL, PRODUCTION_URL (no trailing slash)
+          URL_DEV: ${{ vars.DEV_URL }}
+          URL_STAGING: ${{ vars.STAGING_URL }}
+          URL_PRODUCTION: ${{ vars.PRODUCTION_URL }}
+        run: |
+          case "${{ steps.env.outputs.name }}" in
+            dev) url="$URL_DEV" ;; staging) url="$URL_STAGING" ;; production) url="$URL_PRODUCTION" ;;
+          esac
+          [ -z "$url" ] && { echo "::notice::no URL variable set, skipping health check"; exit 0; }
+          for i in 1 2 3; do curl -fsS "$url/api/v1/health" && exit 0; sleep 10; done
+          if [ "${{ steps.env.outputs.name }}" = "production" ]; then
+            npx wrangler rollback --env production --message "auto-rollback: health check failed" --yes
+          fi
+          exit 1
+
+      - name: Notify search engines (IndexNow)
+        if: steps.env.outputs.name == 'production' && vars.PRODUCTION_URL != ''
+        # Best effort: a failed ping never fails the deploy; search engines still find pages through the sitemap.
+        continue-on-error: true
+        run: test -f apps/web/scripts/indexnow.mjs && node apps/web/scripts/indexnow.mjs "${{ vars.PRODUCTION_URL }}" || echo "::notice::no IndexNow script yet (phase 5)"
+
+      - name: Tag production release
+        if: steps.env.outputs.name == 'production'
+        run: |
+          tag="v$(date -u +%Y.%m.%d)-${GITHUB_SHA::7}"
+          git tag "$tag" && git push origin "$tag"
+
+  staging-tests:
+    # Functional + non-functional automation on staging after every staging deploy.
+    # Results: artifact "staging-test-report"; failures open a "test-failure" issue.
+    # Then run /test locally to log bugs in tests/bugs/bug-log.xlsx and pick fixes.
+    needs: deploy
+    if: github.ref_name == 'staging' && vars.STAGING_URL != ''
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/staging-tests.yml
+    with:
+      environment: staging
+
+  canary-watch:
+    # After a staging or production deploy, watch /api/v1/ops/summary for 10 minutes. On a breach
+    # (5xx > 2 % with >= 20 requests, a new error fingerprint of this release with >= 5 hits,
+    # or health failing) roll back automatically and open an incident. Production incidents start
+    # the auto-debug agent; staging ones (label incident-staging) are the game day (phase 9b §6).
+    needs: deploy
+    if: (github.ref_name == 'production' && vars.PRODUCTION_URL != '') || (github.ref_name == 'staging' && vars.STAGING_URL != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    env:
+      ENV_NAME: ${{ github.ref_name }}
+      URL: ${{ github.ref_name == 'production' && vars.PRODUCTION_URL || vars.STAGING_URL }}
+      OPS_TOKEN: ${{ secrets.OPS_TOKEN }}
+      REL: ${{ github.sha }}
+      LABEL: ${{ github.ref_name == 'production' && 'incident' || 'incident-staging' }}
+    steps:
+      - name: Watch for 10 minutes
+        id: watch
+        run: |
+          [ -n "$OPS_TOKEN" ] || { echo "::notice::OPS_TOKEN not set — canary watch skipped (phase 9b)"; exit 0; }
+          REL="${REL::7}"; export REL
+          for i in $(seq 1 10); do
+            sleep 60
+            if ! curl -fsS -H "Authorization: Bearer $OPS_TOKEN" "$URL/api/v1/ops/summary" -o s.json; then
+              code=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $OPS_TOKEN" "$URL/api/v1/ops/summary")
+              [ "$code" = "404" ] && { echo "::notice::no ops endpoint yet — canary watch skipped"; exit 0; }
+              fails=$((${fails:-0}+1)); [ "$fails" -ge 2 ] && { echo "breach=ops endpoint unreachable ($code)" >> "$GITHUB_OUTPUT"; exit 0; }
+              continue
+            fi
+            fails=0
+            verdict=$(node -e "
+              const s=require('./s.json'); const w=(s.windows||{})['5m']||{};
+              const rate=w.requests>=20 ? w.errors5xx/w.requests : 0;
+              const nf=(s.newFingerprints||[]).filter(f=>f.release===process.env.REL && f.count>=5);
+              const bad=[]; if(rate>0.02) bad.push('5xx '+(rate*100).toFixed(1)+'%');
+              if(nf.length) bad.push(nf.length+' new error(s): '+nf.map(f=>f.fingerprint.slice(0,8)).join(','));
+              if(s.health && s.health.ok===false) bad.push('health: '+(s.health.failed||[]).join(','));
+              console.log(bad.join('; '));")
+            echo "minute $i: ${verdict:-ok}"
+            [ -n "$verdict" ] && { echo "breach=$verdict" >> "$GITHUB_OUTPUT"; exit 0; }
+          done
+      - if: steps.watch.outputs.breach != ''
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - if: steps.watch.outputs.breach != ''
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - name: Roll back and open an incident
+        if: steps.watch.outputs.breach != ''
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # AUTOFIX_TOKEN so the "incident" label starts auto-debug.yml (GITHUB_TOKEN events don't trigger workflows)
+          GH_TOKEN: ${{ secrets.AUTOFIX_TOKEN || github.token }}
+          BREACH: ${{ steps.watch.outputs.breach }}
+        run: |
+          npm ci
+          (cd apps/api && npx wrangler rollback --env "$ENV_NAME" --message "canary: $BREACH" --yes)
+          for l in "$LABEL" sev1 rolled-back; do gh label create "$l" -R "$GITHUB_REPOSITORY" --force >/dev/null 2>&1 || true; done
+          gh issue create -R "$GITHUB_REPOSITORY" --label "$LABEL" --label sev1 --label rolled-back \
+            --title "INC ($ENV_NAME): release ${GITHUB_SHA::7} failed canary — rolled back" \
+            --body "Canary watch after the $ENV_NAME deploy saw: **$BREACH**.
+          $ENV_NAME was rolled back automatically to the previous version.
+          Release: \`${GITHUB_SHA::7}\` · [deploy run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          The auto-debug agent will investigate and open a fix PR."
+          exit 1
