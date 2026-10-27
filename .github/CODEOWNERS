@@ -1,0 +1,4 @@
+* @equisteg-com/build-team
+# Note: GitHub Free does not apply CODEOWNERS to private repositories (no automatic review requests, no blocking).
+# It is kept as documentation of who owns the code, and starts working if the org ever moves to GitHub Team.
+# Merges into production are limited by RELEASE_APPROVERS in .github/workflows/deploy.yml.

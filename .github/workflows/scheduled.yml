@@ -1,0 +1,45 @@
+name: Scheduled checks
+
+# GitHub-side cron jobs (UTC). App-side jobs (expiry, reminders, cleanup) run as
+# Cloudflare Cron Triggers in apps/api — see docs/standards/cron-jobs.md.
+on:
+  schedule:
+    - cron: '30 2 * * 1'   # Mondays 02:30 UTC (08:00 IST): dependency + secret audit
+    - cron: '0 3 * * *'    # daily 03:00 UTC: production health and SEO files
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  weekly-audit:
+    if: github.event.schedule == '30 2 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:latest scan source -r /src
+      - run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest detect --source /repo --redact --exit-code 1
+
+  daily-health:
+    if: github.event.schedule == '0 3 * * *' && vars.PRODUCTION_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          URL: ${{ vars.PRODUCTION_URL }}
+        run: |
+          fail=""
+          for path in /api/v1/health /robots.txt /sitemap.xml /llms.txt /ads.txt; do
+            curl -fsS -o /dev/null "$URL$path" || fail="$fail $path"
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -A 'OAI-SearchBot/1.0' "$URL/")
+          [ "$code" = "200" ] || fail="$fail AI-search-crawler-blocked($code)"
+          if [ -n "$fail" ]; then
+            gh issue create -R ${{ github.repository }} --title "INC: daily check failed" --body "Failed:$fail"
+            exit 1
+          fi

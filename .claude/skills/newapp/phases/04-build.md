@@ -1,0 +1,45 @@
+# Phase 4 — Build (zero cost: Cloudflare + Expo/EAS free tiers)
+
+## Workspace setup
+- Add Turborepo; root scripts `lint`, `typecheck`, `test`, `build`, `security` run across all workspaces (replace the placeholder echo scripts in root package.json).
+- Shared ESLint/Prettier/TS config; TypeScript strict everywhere.
+- Per-app `.env.example`; copies in `infra/env/`. Copy `infra/wrangler.example.jsonc` to `apps/api/wrangler.jsonc` and fill names.
+
+## packages/
+- `shared-types`: domain types + zod schemas (single source of validation for web, mobile, api).
+- `api-client`: typed client (fetch) with error handling and retries; used by web and mobile.
+- `design-tokens`: from Phase 2.
+
+## apps/web — Next.js static export on Cloudflare
+- `create-next-app` (App Router, TS, Tailwind, ESLint) inside `apps/web`; set `output: 'export'`, `images.unoptimized: true` (or a free loader), `trailingSlash: true`.
+- Every page is pre-rendered at build time (SSG) so its content is in the raw HTML. Dynamic data comes from `apps/api` through `packages/api-client`.
+- Implement every REQ and differentiator; port the prototype's look and interactions, then apply the design system.
+- PWA (manifest + service worker via Serwist or the current recommended plugin), offline page.
+- Required pages: Home · feature pages · Pricing (if paid) · Restore purchase (if paid) · About · Contact/Support (developerEmail) · Privacy Policy (lists every SDK on web AND mobile and the payment provider) · Terms · Refund policy (if paid) · Disclaimer if relevant · Account/data deletion page (public URL) · FAQ/Help · 404 / error.
+- Content: 15–30 original, genuinely useful pages (guides, how-tos, calculators/tools) around the brief keywords. Needed for AdSense approval, SEO and AI search. No filler; nothing duplicated from existingProducts.
+- AdSense via `next/script` only after consent (Google-certified CMP) AND only when `/api/v1/access/me` says the visitor is on the free tier; `public/ads.txt` with adsensePublisherId; `AdSlot` reserves space.
+- Served by the `apps/api` Worker through Workers Static Assets (`assets.directory = ../web/out`), so web and API share one origin and one free Worker.
+
+## apps/api — Cloudflare Worker (Hono + TypeScript)
+- Hono app with `/api/v1/*` routes, zod validation from shared-types, secure headers middleware, CORS allow-list (web origin + mobile app scheme), per-IP rate limiting (WAF rule for bursts + a D1/KV counter per route), Turnstile on abusable forms, structured JSON logs, `GET /api/v1/health`.
+- Bindings: D1 `DB`, KV `FLAGS`, R2 only if files must be stored server-side, `AI` only if an LLM feature is in scope (through the LLM gateway rules in HLD), service binding `PLATFORM` to `equisteg-platform` when it exists.
+- Environments in `wrangler.jsonc`: `dev`, `staging`, `production`, each with its own D1, KV and secrets. Migrations in `apps/api/migrations/`.
+- `scheduled()` handler for Cron Triggers (Phase 4b and `docs/standards/cron-jobs.md`).
+- A FastAPI service is allowed only if Phase 0b chose Option D; record its free host and limits.
+
+## apps/mobile — React Native + Expo
+- `create-expo-app` (TypeScript, Expo Router) inside `apps/mobile`; web-search the current Expo SDK and use it.
+- `app.config.ts`: name, slug, `android.package = <androidPackagePrefix>.<slug>`, versionCode 1, icons/adaptive icon/splash from Phase 2, minimal permissions (justify each in LLD), `android.blockedPermissions` for anything a library adds that we don't need.
+- Implement the same REQs with native UI (not a WebView of the website).
+- Minimum Functionality: works offline (local storage + NetInfo UI), ≥ 3 meaningful native features (e.g. expo-sharing, expo-notifications local reminders, expo-haptics, expo-file-system export, expo-local-authentication, home-screen quick actions), Android back behaviour correct on every screen, no dead links, no hand-off to the browser for core features.
+- Ads: `react-native-google-mobile-ads` config plugin with AdMob app ID; UMP consent (`AdsConsent`) before loading ads; Google TestIds in development; production unit IDs from EAS env; banner + frequency-capped interstitial per Phase 2 plan; no ads for entitled users.
+- Paid features: Phase 4b (Google Play Billing on Android).
+- The app reads its API base URL from `EXPO_PUBLIC_API_URL` (public, not a secret; set per environment at build time — CI builds test APKs against dev or staging with it), defaulting to the production URL.
+- `eas.json` with `development`, `preview` (APK) and `production` (AAB) profiles. EAS manages the upload keystore (no key files in repo). EAS Free allows a limited number of builds per month at low priority — build `preview` only from `staging`, `production` only for a release; otherwise build locally with `npx expo run:android` / Gradle (free).
+- Set `targetSdkVersion` to the current Play requirement (web-search it; configure via expo-build-properties if the SDK default is lower).
+
+## Preview
+- Push the user's current branch (permission prompt) and open the PR into `development`. When it merges, `deploy.yml` deploys the `dev` environment to `<slug>-dev.<account>.workers.dev`.
+  If the Cloudflare secrets are missing in GitHub → NEEDS HUMAN: "GitHub repo → Settings → Secrets and variables → Actions → add CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID".
+- Mobile preview: `eas build --profile preview --platform android` (permission prompt) → installable APK link. If `eas` isn't logged in → NEEDS HUMAN: `npx eas login` then `npx eas init`.
+- If mode is `review`: show preview URL + APK link + REQ checklist and wait.
