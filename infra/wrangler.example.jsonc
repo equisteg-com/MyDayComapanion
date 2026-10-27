@@ -1,0 +1,42 @@
+// Copy to apps/api/wrangler.jsonc and replace <slug>, <domain> (the product's own domain, e.g. productname.com) and every <id>.
+// One Worker serves the static web app (apps/web/out) AND the API (/api/v1/*).
+// Environments map to branches: development -> dev, staging -> staging, production -> production.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "<slug>",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "../web/out", "binding": "ASSETS", "not_found_handling": "404-page" },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+
+  "env": {
+    "dev": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-dev", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "dev", "PAYMENT_MODE": "test" }
+      // no cron in dev: only 5 Cron Triggers per account on the Free plan
+    },
+    "staging": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-staging", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "staging", "PAYMENT_MODE": "test" }
+    },
+    "production": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-prod", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "production", "PAYMENT_MODE": "live", "GITHUB_REPO": "equisteg-com/<slug>", "CANONICAL_HOST": "<domain>" },
+      // RELEASE is set per deploy by deploy.yml (--var RELEASE:<sha>)
+      // every 5 min: watchdog (detect + contain); the 01:00 UTC run also does the daily jobs
+      // (expire entitlements, unbind devices, reminders, cleanup). One trigger = one of the 5 per account.
+      "triggers": { "crons": ["*/5 * * * *"] },
+      // the product's own domain (its Cloudflare zone must exist first); the Worker 301-redirects www to the apex
+      "routes": [{ "pattern": "<domain>", "custom_domain": true }, { "pattern": "www.<domain>", "custom_domain": true }]
+    }
+  }
+  // Secrets (never in this file): npx wrangler secret put <NAME> --env <env>
+  //   PAYMENT_WEBHOOK_SECRET, PAYMENT_KEY_ID, PAYMENT_KEY_SECRET, SESSION_SIGNING_KEY,
+  //   EMAIL_ENC_KEY, LOOKUP_PEPPER, RESEND_API_KEY, TURNSTILE_SECRET, SENTRY_DSN,
+  //   OPS_TOKEN (read-only ops summary), GITHUB_ISSUES_TOKEN (incident issues; Issues read/write only)
+}

@@ -1,0 +1,3 @@
+# Maestro workspace config. Flows live in ./flows, data in ../testdata/mobile.
+flows:
+  - "flows/*"
