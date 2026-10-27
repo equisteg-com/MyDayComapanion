@@ -9,7 +9,8 @@ Every earlier version of the app is combined here, with its commit history:
   parts 1–3. Its 10 commits were cherry-picked unchanged and applied without conflicts.
 - Checked and already included: the project-files bundle (`feature/phase0-foundation` a61b830 is an ancestor of
   PR #15), the part 2 patch (same as commit 4be93fb), the prebuild documents (the repository copies are newer), the
-  agent OS build document (identical) and the MyDayGuide spec (renamed to `MYDAYCOMPANION_BUILD_SPEC.md`).
+  agent OS build document (identical) the MyDayGuide spec (renamed to `MYDAYCOMPANION_BUILD_SPEC.md`), and the Phase 0 feature inventory
+  (superseded by `docs/architecture/cloud-infrastructure.md` §3).
 - Not brought in: Dependabot version-bump PRs from both old repositories (Dependabot reopens them here) and the
   `chore/private-kit` change, which `MyDayCompanion` had already reverted.
 

@@ -12,7 +12,7 @@ this branch (checked 2026-10-27).
 | Feature | Status | What cloud piece | Why it can't be done on the phone alone | Cost to Equisteg |
 |---|---|---|---|---|
 | **F18 Monthly subscription: purchase check** | Decided (D-02 = free server check). Not built; waits on the price (D-01) | One Cloudflare Worker route, through the company platform Worker `equisteg-platform` (company rule: entitlement logic lives there, not per product). Google Play Developer API with a service account. KV or D1 for the entitlement record. A daily Cron Trigger that reads Play's voided-purchases list to catch refunds | A purchase checked only on the phone can be faked on a rooted or modified phone. Google recommends checking the purchase token on a server and acknowledging it there. Refunds and chargebacks are only visible through the Play Developer API, which needs a secret service-account key, and a secret can't be shipped inside the app | ₹0 on the Workers free tier (100,000 requests a day). Google's subscription fee (15% in India) is per sale, already accepted |
-| **Privacy policy page** | Needed before the Play listing | A static page: the existing equisteg.com site, or `apps/web` on Cloudflare Workers Static Assets | Play requires a public privacy-policy URL for any app that uses the microphone, calendar or a subscription | ₹0 |
+| **Privacy policy page** | Needed before the Play listing | A static page: the existing equisteg.com site, or `apps/web` on Cloudflare Workers Static Assets | Play requires a public privacy-policy URL for every app (verify against the current Play User Data policy at listing time) | ₹0 |
 
 What the subscription check changes in the app:
 - The APK gains `INTERNET` (and Play Billing adds `com.android.vending.BILLING`). Android permissions apply to the
@@ -28,7 +28,7 @@ What the subscription check changes in the app:
 
 | Idea | Cloud piece | Why | Cost | Recommendation |
 |---|---|---|---|---|
-| D-04 Remote wipe of only this app | Firebase Cloud Messaging + a Worker + D1 holding device tokens | A wipe from another device needs a message to reach the phone over the internet | ₹0 on free tiers, but it stores device tokens (personal data under DPDP/GDPR) | Not now. Android's Find My Device already erases the whole phone at ₹0 |
+| D-04 Remote wipe of only this app | Firebase Cloud Messaging + a Worker + a small store (KV or D1) holding device tokens | A wipe from another device needs a message to reach the phone over the internet | ₹0 on free tiers, but it stores device tokens (personal data under DPDP/GDPR) | Not now. Android's Find My Device already erases the whole phone at ₹0 |
 | D-06 Sync between several devices | Accounts, a Worker, D1/R2 for end-to-end encrypted data | Two devices can only share data through something both can reach | ₹0 under free limits; adds accounts and data-protection duties | Not now |
 | D-03c Cloud AI for long sentences | A Worker holding the API key, plus a paid model API | The model runs in the cloud and the key must stay on a server | **Costs money**: about US$0.27 per active user per month (agent OS doc §10.3) | No. Use the on-device options below |
 
