@@ -1,0 +1,10 @@
+{
+  "p95Ms": 500,
+  "maxErrorRate": 0.01,
+  "routes": [
+    { "path": "/" },
+    { "path": "/robots.txt" },
+    { "path": "/sitemap.xml" }
+  ],
+  "_help": "Add the product's key pages and API routes, e.g. { \"path\": \"/api/v1/health\" } or { \"path\": \"/api/v1/convert\", \"method\": \"POST\", \"body\": { \"from\": \"km\", \"to\": \"mi\", \"value\": 5 }, \"expect\": 200 }. Never real customer data."
+}

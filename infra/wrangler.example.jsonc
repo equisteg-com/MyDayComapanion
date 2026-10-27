@@ -1,0 +1,38 @@
+// Copy to apps/api/wrangler.jsonc and replace <slug> and every <id>.
+// One Worker serves the static web app (apps/web/out) AND the API (/api/v1/*).
+// Environments map to branches: development -> dev, staging -> staging, production -> production.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "<slug>",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": "../web/out", "binding": "ASSETS", "not_found_handling": "404-page" },
+  "observability": { "enabled": true },
+  "workers_dev": true,
+
+  "env": {
+    "dev": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-dev", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "dev", "PAYMENT_MODE": "test" }
+      // no cron in dev: only 5 Cron Triggers per account on the Free plan
+    },
+    "staging": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-staging", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "staging", "PAYMENT_MODE": "test" }
+    },
+    "production": {
+      "d1_databases": [{ "binding": "DB", "database_name": "<slug>-prod", "database_id": "<id>", "migrations_dir": "migrations" }],
+      "kv_namespaces": [{ "binding": "FLAGS", "id": "<id>" }],
+      "vars": { "ENVIRONMENT": "production", "PAYMENT_MODE": "live" },
+      // daily 01:00 UTC: expire entitlements, unbind devices, renewal reminders, cleanup
+      "triggers": { "crons": ["0 1 * * *"] },
+      "routes": [{ "pattern": "<slug>.equisteg.com", "custom_domain": true }]
+    }
+  }
+  // Secrets (never in this file): npx wrangler secret put <NAME> --env <env>
+  //   PAYMENT_WEBHOOK_SECRET, PAYMENT_KEY_ID, PAYMENT_KEY_SECRET, SESSION_SIGNING_KEY,
+  //   EMAIL_ENC_KEY, LOOKUP_PEPPER, RESEND_API_KEY, TURNSTILE_SECRET, SENTRY_DSN
+}

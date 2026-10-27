@@ -1,0 +1,3 @@
+* @equisteg-com/build-team
+# On a private repo with GitHub Free, CODEOWNERS requests reviews but cannot block a merge.
+# Merges into production are limited by RELEASE_APPROVERS in .github/workflows/deploy.yml.

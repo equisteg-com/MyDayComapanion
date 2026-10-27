@@ -1,0 +1,102 @@
+name: Mobile
+
+# Builds an Android APK on the runner (free, no EAS build credits) pointed at the
+# chosen environment's API, and runs every Maestro flow on an emulator.
+# - PRs into staging that touch mobile code: tests against dev.
+# - Called by staging-tests.yml after every staging deploy: tests against staging.
+# - Manual: pick dev or staging (never production).
+on:
+  pull_request:
+    branches: [staging]
+    paths:
+      - apps/mobile/**
+      - tests/mobile/**
+      - packages/**
+  workflow_call:
+    inputs:
+      environment:
+        type: string
+        default: staging
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'dev | staging (never production)'
+        default: staging
+
+concurrency:
+  group: mobile-${{ github.ref }}-${{ inputs.environment || 'dev' }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  maestro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the mobile app exists
+        id: has
+        run: test -f apps/mobile/app.config.ts && echo "ok=true" >> "$GITHUB_OUTPUT" || echo '::notice::apps/mobile not created yet'
+      - name: Pick the API the app talks to
+        if: steps.has.outputs.ok == 'true'
+        id: env
+        env:
+          URL_DEV: ${{ vars.DEV_URL }}
+          URL_STAGING: ${{ vars.STAGING_URL }}
+        run: |
+          case "${{ inputs.environment || 'dev' }}" in
+            dev) url="$URL_DEV" ;;
+            staging) url="$URL_STAGING" ;;
+            *) echo "::error::only dev or staging may be tested"; exit 1 ;;
+          esac
+          [ -n "$url" ] || echo "::warning::no URL variable for this environment; the app uses its built-in default"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+      - if: steps.has.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - if: steps.has.outputs.ok == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - if: steps.has.outputs.ok == 'true'
+        run: npm ci
+      # Release variant: the JS bundle is inside the APK (a debug APK needs a Metro
+      # server). Expo's prebuild signs release builds with the debug key, so no secrets.
+      - name: Build APK
+        if: steps.has.outputs.ok == 'true'
+        working-directory: apps/mobile
+        env:
+          EXPO_PUBLIC_API_URL: ${{ steps.env.outputs.url }}
+          EXPO_PUBLIC_APP_ENV: ${{ inputs.environment || 'dev' }}
+        run: |
+          npx expo prebuild --platform android --no-install
+          cd android && ./gradlew assembleRelease
+      - if: steps.has.outputs.ok == 'true'
+        run: curl -fsSL "https://get.maestro.mobile.dev" | bash
+      - name: Enable KVM
+        if: steps.has.outputs.ok == 'true'
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules && sudo udevadm trigger --name-match=kvm
+      - name: Run Maestro flows
+        if: steps.has.outputs.ok == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          script: |
+            adb install apps/mobile/android/app/build/outputs/apk/release/app-release.apk
+            mkdir -p test-results
+            $HOME/.maestro/bin/maestro test tests/mobile/flows --format junit --output test-results/maestro.xml --debug-output test-results/maestro-debug -e API_URL=${{ steps.env.outputs.url }}
+      - if: always() && steps.has.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: results-mobile
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 30

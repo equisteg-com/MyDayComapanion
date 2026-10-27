@@ -1,0 +1,49 @@
+{
+  "_note": "Filled once for the whole company. VERIFY every value before the first product.",
+  "publisherName": "Equisteg",
+  "developerEmail": "support@equisteg.com",
+  "developerWebsite": "https://equisteg.com",
+  "legalEntityCountry": "India",
+  "androidPackagePrefix": "com.equisteg",
+  "adsensePublisherId": "ca-pub-0000000000000000",
+  "admobPublisherId": "pub-0000000000000000",
+  "githubOrg": "equisteg-com",
+  "defaultRegion": "IN",
+  "defaultLanguages": [
+    "en"
+  ],
+  "hosting": {
+    "web": "cloudflare-workers static assets (apps/web/out served by apps/api Worker)",
+    "api": "cloudflare-workers (Hono) + D1/KV; R2 only at maturity Level 3",
+    "mobile": "expo eas (free) or local gradle builds",
+    "platform": "equisteg-platform Worker (shared payments/entitlement) via service binding"
+  },
+  "existingProducts": [
+    {
+      "name": "Example Product",
+      "url": "https://example.equisteg.com",
+      "category": "finance"
+    }
+  ],
+  "branches": {
+    "default": "development",
+    "flow": [
+      "development",
+      "staging",
+      "production"
+    ],
+    "environments": {
+      "development": "dev",
+      "staging": "staging",
+      "production": "production"
+    }
+  },
+  "payments": {
+    "web": "razorpay (India) or stripe \u2014 hosted checkout, test mode until Gate 9",
+    "android": "google-play-billing (react-native-iap), verified server-side",
+    "signup": "none \u2014 licence key + email magic link restore",
+    "email": "resend free"
+  },
+  "costPolicy": "zero-cost: free tiers or open source only; see docs/standards/zero-cost.md",
+  "repoVisibility": "private"
+}
