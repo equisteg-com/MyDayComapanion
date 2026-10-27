@@ -1,0 +1,92 @@
+name: CI
+
+# Runs on every PR into the three long-lived branches.
+# Private repo on GitHub Free: 2,000 Actions minutes/month, so jobs are cached,
+# de-duplicated and time-limited.
+on:
+  pull_request:
+    branches: [development, staging, production]
+  push:
+    branches: [development, staging, production]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      # Reviewer agents, skills and Claude settings are valid and every agent:<name> reference resolves
+      - run: npm run lint:agents
+      # The secrets guard used by Claude Code and the pre-commit hook still blocks what it should
+      - run: npm run test:guards
+      - run: npm run lint --if-present
+      - run: npm run typecheck --if-present
+      - run: npm run test --if-present
+      - run: npm run build --if-present
+      # SEO audit of the static export (phase 5: apps/web/scripts/seo-audit.mjs); skipped until the web app exists
+      - run: npm run seo:audit --workspaces --if-present
+      - name: Secret scan of the built web bundle (Gitleaks, no git history)
+        if: hashFiles('apps/web/out/index.html') != ''
+        run: docker run --rm -v "$PWD/apps/web/out:/out" ghcr.io/gitleaks/gitleaks:latest detect --no-git --source /out --redact --exit-code 1
+
+  security:
+    # Free replacements for GitHub code/secret scanning, which private repos on GitHub Free do not get.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: No secret files or live keys in tracked files
+        run: node tests/tools/check-forbidden-files.mjs
+      - name: Secret scan (Gitleaks)
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest detect --source /repo --redact --exit-code 1
+      - name: Static analysis (Semgrep CE)
+        run: docker run --rm -v "$PWD:/src" semgrep/semgrep semgrep scan --config p/default --metrics=off --error /src
+      - name: Dependency vulnerabilities (OSV-Scanner)
+        run: docker run --rm -v "$PWD:/src" ghcr.io/google/osv-scanner:latest scan source -r /src
+
+  promotion-order:
+    # staging only accepts PRs from development; production only from staging.
+    if: github.event_name == 'pull_request' && (github.base_ref == 'staging' || github.base_ref == 'production')
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          base="$GITHUB_BASE_REF"; head="$GITHUB_HEAD_REF"
+          if [ "$base" = "staging" ] && [ "$head" != "development" ]; then echo "staging only accepts PRs from development"; exit 1; fi
+          if [ "$base" = "production" ] && [ "$head" != "staging" ]; then echo "production only accepts PRs from staging"; exit 1; fi
+
+  guard:
+    # Replaces branch protection (not available on private repos with GitHub Free):
+    # any push that did not come from a merged PR fails and opens an incident issue.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          merged=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" --jq '[.[] | select(.merged_at != null)] | length')
+          if [ "$merged" = "0" ]; then
+            gh issue create -R "$GITHUB_REPOSITORY" \
+              --title "INC: direct push to $GITHUB_REF_NAME" \
+              --body "Commit $GITHUB_SHA by @$GITHUB_ACTOR reached $GITHUB_REF_NAME without a reviewed pull request."
+            exit 1
+          fi
