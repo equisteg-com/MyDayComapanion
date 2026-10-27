@@ -23,8 +23,8 @@
     "prepare": "node tests/tools/install-githooks.mjs"
   },
   "devDependencies": {
-    "turbo": "^2.0.0",
-    "@playwright/test": "^1.56.0"
+    "turbo": "^2.11.10",
+    "@playwright/test": "^1.64.1"
   },
   "packageManager": "npm@10.9.0"
 }
