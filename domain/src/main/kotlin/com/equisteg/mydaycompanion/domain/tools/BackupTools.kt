@@ -11,6 +11,10 @@ import com.equisteg.mydaycompanion.domain.repository.PlanRepository
 import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
 import com.equisteg.mydaycompanion.domain.repository.RoutineRepository
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
+import com.equisteg.mydaycompanion.domain.repository.StoreTransactions
+import com.equisteg.mydaycompanion.domain.security.ChallengeAnswer
+import com.equisteg.mydaycompanion.domain.security.PersonalApproval
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.security.SecurityStore
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -45,7 +49,7 @@ class BackupStaging(private val clock: Clock, private val ttl: Duration = Durati
 
     /** The owner cancelled: forget the item now rather than when it expires. */
     fun discard(token: String) {
-        (items.remove(token)?.value as? CharArray)?.fill(' ')
+        items.remove(token)?.let(::wipe)
     }
 
     private fun put(value: Any): String {
@@ -53,14 +57,46 @@ class BackupStaging(private val clock: Clock, private val ttl: Duration = Durati
         return UUID.randomUUID().toString().also { items[it] = Item(value, clock.instant()) }
     }
 
-    private fun fresh(token: String): Item? = items[token]?.takeIf { Duration.between(it.at, clock.instant()) <= ttl }
+    private fun fresh(token: String): Item? {
+        purge()
+        return items[token]
+    }
 
-    private fun take(token: String): Any? = fresh(token)?.value.also { items.remove(token) }
+    private fun take(token: String): Any? = fresh(token)?.let { items.remove(token)?.value }
 
     private fun purge() {
         val now = clock.instant()
-        items.entries.removeIf { (_, item) ->
-            (Duration.between(item.at, now) > ttl).also { expired -> if (expired) (item.value as? CharArray)?.fill(' ') }
+        items.entries.removeIf { (_, item) -> (Duration.between(item.at, now) > ttl).also { expired -> if (expired) wipe(item) } }
+    }
+
+    private fun wipe(item: Item) {
+        (item.value as? CharArray)?.fill(' ')
+    }
+}
+
+/**
+ * What a restore does to this phone's protections. A backup never makes them weaker: the app lock
+ * stays on if either side has it, with the shorter delay; this phone's challenge questions are
+ * kept when it has some; personal approvals keep asking for a challenge answer if either side did.
+ */
+data class RestoredSecurity(val settings: SecuritySettings, val challenges: List<ChallengeAnswer>, val questionsFromBackup: Boolean) {
+    companion object {
+        fun of(current: SecuritySettings, currentChallenges: List<ChallengeAnswer>, backup: SecuritySettings, backupChallenges: List<ChallengeAnswer>): RestoredSecurity {
+            val keepOwn = currentChallenges.isNotEmpty()
+            val challenges = if (keepOwn) currentChallenges else backupChallenges
+            val lockAfter = when {
+                current.appLockEnabled && backup.appLockEnabled -> minOf(current.lockAfterMinutes, backup.lockAfterMinutes)
+                current.appLockEnabled -> current.lockAfterMinutes
+                else -> backup.lockAfterMinutes
+            }
+            val wantsChallenge = current.personalApproval == PersonalApproval.CHALLENGE || backup.personalApproval == PersonalApproval.CHALLENGE
+            val settings = SecuritySettings(
+                appLockEnabled = current.appLockEnabled || backup.appLockEnabled,
+                lockAfterMinutes = lockAfter,
+                wipeOnRepeatedFailure = current.wipeOnRepeatedFailure || backup.wipeOnRepeatedFailure,
+                personalApproval = if (wantsChallenge && challenges.isNotEmpty()) PersonalApproval.CHALLENGE else PersonalApproval.DEVICE_CREDENTIAL,
+            )
+            return RestoredSecurity(settings, challenges, questionsFromBackup = !keepOwn && challenges.isNotEmpty())
         }
     }
 }
@@ -132,6 +168,7 @@ class RestoreBackupTool(
     private val audit: AuditLog,
     private val preferences: PreferencesStore,
     private val security: SecurityStore,
+    private val transactions: StoreTransactions,
 ) : AgentTool {
     override val spec = ToolSpec(
         id = "backup.restore",
@@ -139,7 +176,7 @@ class RestoreBackupTool(
         riskLevel = RiskLevel.L4,
         agentProposable = false,
         confirmation = Confirmation.ALWAYS,
-        verification = "Every store holds exactly what the backup holds.",
+        verification = "Every store holds exactly what the backup holds; protections are never weaker than before.",
     )
 
     override fun validate(args: JsonObject): ArgsValidation {
@@ -151,31 +188,40 @@ class RestoreBackupTool(
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val c = staging.takeRestore(args.string("staged")!!) ?: return ToolOutcome.Failure("EXPIRED")
         if (c.digest != args.string("sha256")) return ToolOutcome.Failure("CHANGED")
-        listOf(tasks, events, plans, routines, memories, audit, preferences, security).forEach { it.deleteAll() }
-        tasks.upsert(c.tasks)
-        events.upsert(c.events)
-        c.plans.forEach { plans.save(it) }
-        c.routines.forEach { routines.upsert(it) }
-        c.memories.forEach { memories.upsert(it) }
-        c.audit.forEach { audit.record(it) }
-        preferences.set(c.preferences)
-        security.saveSettings(c.security)
-        security.replaceChallenges(c.challenges)
-        restored = c
+        val target = RestoredSecurity.of(security.settings(), security.challenges(), c.security, c.challenges)
+        // One transaction: if anything fails part-way, the phone keeps what it had.
+        // The security store is overwritten, not emptied, so recorded wrong answers and lockouts stay.
+        transactions.atomically {
+            listOf(tasks, events, plans, routines, memories, audit, preferences).forEach { it.deleteAll() }
+            tasks.upsert(c.tasks)
+            events.upsert(c.events)
+            c.plans.forEach { plans.save(it) }
+            c.routines.forEach { routines.upsert(it) }
+            c.memories.forEach { memories.upsert(it) }
+            c.audit.forEach { audit.record(it) }
+            preferences.set(c.preferences)
+            security.saveSettings(target.settings)
+            security.replaceChallenges(target.challenges)
+        }
+        restored = c to target
         return ToolOutcome.Success("restored tasks=${c.tasks.size} routines=${c.routines.size} memories=${c.memories.size}")
     }
 
     // Set by execute and read once by verify; restores never run concurrently (one approval at a time).
-    private var restored: BackupContents? = null
+    private var restored: Pair<BackupContents, RestoredSecurity>? = null
 
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
-        val c = restored ?: return false
+        val (c, target) = restored ?: return false
         restored = null
-        // The orchestrator records the restore itself in History right after this, so audit is checked before that.
-        return tasks.count() == c.tasks.size && events.count() == c.events.size && plans.all().size == c.plans.size &&
-            routines.count() == c.routines.size && memories.count() == c.memories.size && audit.count() == c.audit.size &&
-            preferences.get() == c.preferences && security.settings() == c.security &&
-            security.challenges().sortedBy { it.id } == c.challenges.sortedBy { it.id }
+        // The orchestrator records the restore itself in History right after this, so History is compared before that.
+        return tasks.all().sortedBy { it.id } == c.tasks.sortedBy { it.id } &&
+            events.all().sortedBy { it.id } == c.events.sortedBy { it.id } &&
+            plans.all().sortedBy { it.date } == c.plans.sortedBy { it.date } &&
+            routines.all().sortedBy { it.id } == c.routines.sortedBy { it.id } &&
+            memories.all().sortedBy { it.id } == c.memories.sortedBy { it.id } &&
+            audit.all().sortedBy { it.id } == c.audit.sortedBy { it.id } &&
+            preferences.get() == c.preferences && security.settings() == target.settings &&
+            security.challenges().sortedBy { it.id } == target.challenges.sortedBy { it.id }
     }
 
     companion object {

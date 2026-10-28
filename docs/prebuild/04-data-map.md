@@ -44,7 +44,7 @@ Voice audio (Phase 1) is never stored; only the recognised text enters the pipel
    the header is authenticated. A backup is untrusted input when restored: files over 20 MB, unknown fields, unknown
    versions, weaker key settings, rule-like titles or memories and broken references are refused whole. Ten wrong
    passphrases close Restore for an hour. There is no recovery without the passphrase.
-4. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
+5. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
 
 ## Network
 

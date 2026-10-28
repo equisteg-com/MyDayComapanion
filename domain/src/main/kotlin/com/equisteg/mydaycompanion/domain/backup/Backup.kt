@@ -254,12 +254,26 @@ object BackupReader {
         val action = m.req("action").takeIf { it.length <= 60 && actionPattern.matches(it) } ?: bad("BAD_AUDIT")
         val reason = m["reasonCode"]?.takeIf { it.length <= 60 && Regex("^[A-Za-z0-9_]+$").matches(it) }
         if (m["reasonCode"] != null && reason == null) bad("BAD_AUDIT")
-        val detail = m["detail"]?.also { if (it.length > AuditEntry.MAX_DETAIL_CHARS) bad("BAD_AUDIT") }
+        val detail = m["detail"]?.also { if (it.length > AuditEntry.MAX_DETAIL_CHARS) bad("BAD_AUDIT") }?.let(::cleanDetail)
         return AuditEntry(
             id(m["id"]), instant(m["timestamp"]), enum<AuditActor>(m["actor"]), action, m["riskLevel"]?.let { enum<RiskLevel>(it) },
             enum<AuditDecision>(m["decision"]), enum<AuditOutcome>(m["outcome"]), reason, detail,
         )
     }
+
+    /**
+     * History never holds what the owner wrote, and an imported entry can't be trusted to keep
+     * that rule: only the app's own counters ("tasks=3") come across; any other text is dropped.
+     */
+    fun cleanDetail(detail: String): String? =
+        detail.split(' ').filter { token ->
+            val (key, value) = token.split('=', limit = 2).takeIf { it.size == 2 } ?: return@filter false
+            key in DETAIL_COUNTERS && value.length <= 9 && value.all(Char::isDigit) && value.isNotEmpty()
+        }.joinToString(" ").ifEmpty { null }
+
+    private val DETAIL_COUNTERS = setOf(
+        "tasks", "events", "routines", "memories", "blocks", "unscheduled", "subtasks", "subtasksMoved", "removed", "bytes", "reminders",
+    )
 
     private fun preferences(m: Map<String, String?>): UserPreferences {
         m.only("dayStart", "dayEnd", "bufferMinutes", "speechOutputEnabled", "dateOrder", "reminderLeadMinutes", "onboardingDone")

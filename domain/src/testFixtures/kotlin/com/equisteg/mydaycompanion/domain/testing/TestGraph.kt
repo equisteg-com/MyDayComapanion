@@ -143,7 +143,7 @@ class TestGraph(
             com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
             com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
             com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(backups, exportTargets, staging),
-            com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(staging, tasks, events, plans, routines, memories, audit, preferences, security),
+            com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(staging, tasks, events, plans, routines, memories, audit, preferences, security, com.equisteg.mydaycompanion.domain.repository.NoStoreTransactions),
         ),
     )
     val orchestrator = AgentOrchestrator(

@@ -160,4 +160,53 @@ class BackupTest {
         assertEquals("UNSUPPORTED_FORMAT", read(plain.replace("mydaycompanion-backup", "something-else")))
         assertEquals("NOT_VALID_JSON", read("not json"))
     }
+
+    @Test
+    fun `a restore never weakens this phone's protections`() = runTest {
+        val old = TestGraph().apply {
+            security.saveSettings(SecuritySettings(appLockEnabled = false, lockAfterMinutes = 30))
+            security.replaceChallenges(listOf("Attacker one?", "Attacker two?", "Attacker three?").mapIndexed { i, q -> ChallengeHasher.hash("q${i + 1}", q, "known$i") })
+        }
+        val file = backUp(old)
+        val new = TestGraph()
+        val own = listOf("First school?", "First pet?", "Favourite teacher?").mapIndexed { i, q -> ChallengeHasher.hash("q${i + 1}", q, "mine$i") }
+        new.security.saveSettings(SecuritySettings(appLockEnabled = true, lockAfterMinutes = 1))
+        new.security.replaceChallenges(own)
+        new.security.recordFailure(new.clock.instant())
+
+        val contents = (BackupReader.read((codec.decrypt(file, passphrase) as Decrypted.Ok).plaintext) as BackupRead.Valid).contents
+        assertIs<ExecutionResult.Done>(new.approve("backup.restore", RestoreBackupTool.args(new.staging.stageRestore(contents), contents.digest)))
+        assertEquals(SecuritySettings(appLockEnabled = true, lockAfterMinutes = 1), new.security.settings(), "app lock stays on with the shorter delay")
+        assertEquals(own, new.security.challenges(), "this phone's questions are kept")
+        assertEquals(1, new.security.failures().size, "wrong answers already counted stay counted")
+
+        val merged = com.equisteg.mydaycompanion.domain.tools.RestoredSecurity.of(
+            SecuritySettings(appLockEnabled = false), emptyList(), SecuritySettings(lockAfterMinutes = 15, personalApproval = PersonalApproval.CHALLENGE), own,
+        )
+        assertEquals(SecuritySettings(appLockEnabled = true, lockAfterMinutes = 15, personalApproval = PersonalApproval.CHALLENGE), merged.settings)
+        assertTrue(merged.questionsFromBackup)
+    }
+
+    @Test
+    fun `imported History keeps only the app's own counters`() {
+        assertEquals("tasks=3 events=0", BackupReader.cleanDetail("provider=rules tasks=3 events=0"))
+        assertEquals("tasks=2", BackupReader.cleanDetail("Call Raj about the flat tasks=2"))
+        assertEquals(null, BackupReader.cleanDetail("memory kept"))
+        assertEquals(null, BackupReader.cleanDetail("Raj=1 title=Call"))
+    }
+
+    @Test
+    fun `a staged passphrase is wiped when it expires`() {
+        var now = java.time.Instant.parse("2026-10-06T07:00:00Z")
+        val clock = object : java.time.Clock() {
+            override fun getZone() = java.time.ZoneOffset.UTC
+            override fun withZone(zone: java.time.ZoneId?) = this
+            override fun instant() = now
+        }
+        val staging = com.equisteg.mydaycompanion.domain.tools.BackupStaging(clock)
+        val token = staging.stagePassphrase(passphrase)
+        now = now.plus(java.time.Duration.ofMinutes(11))
+        assertFalse(staging.has(token))
+        assertEquals(null, staging.takePassphrase(token))
+    }
 }

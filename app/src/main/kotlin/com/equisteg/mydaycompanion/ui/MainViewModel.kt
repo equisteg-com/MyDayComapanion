@@ -582,12 +582,10 @@ class MainViewModel(
                         }
                         is BackupRead.Valid -> {
                             val c = read.contents
-                            val day = c.createdAt.atZone(services.clock.zone).toLocalDate()
                             request(
                                 ProposedAction("backup.restore", RestoreBackupTool.args(services.backupStaging.stageRestore(c), c.digest)),
                                 "Replace everything with this backup?",
-                                "Backup from $day: ${c.tasks.size} tasks, ${c.routines.size} routines, ${c.memories.size} memories. " +
-                                    "Everything now on this phone is replaced. This cannot be undone.",
+                                restoreSummary(c),
                             )
                         }
                     }
@@ -621,6 +619,31 @@ class MainViewModel(
         }
     }
 
+    /** What the owner approves: what comes in, and what happens to this phone's protections. */
+    private suspend fun restoreSummary(c: com.equisteg.mydaycompanion.domain.backup.BackupContents): String {
+        val day = c.createdAt.atZone(services.clock.zone).toLocalDate()
+        val after = com.equisteg.mydaycompanion.domain.tools.RestoredSecurity.of(services.security.settings(), services.security.challenges(), c.security, c.challenges)
+        val used = c.memories.filter { it.status == MemoryStatus.ACTIVE && it.deletedAt == null }
+        val instructions = used.count { it.type == com.equisteg.mydaycompanion.domain.memory.MemoryType.EXPLICIT_INSTRUCTION }
+        val s = after.settings
+        return buildString {
+            append("Backup from $day: ${c.tasks.size} tasks, ${c.routines.size} routines, ")
+            append("${used.size} memories the agent will use")
+            if (instructions > 0) append(" ($instructions of them instructions)")
+            append(". ")
+            append(if (s.appLockEnabled) "App lock: on. " else "App lock: off. ")
+            append(
+                when {
+                    after.questionsFromBackup -> "Challenge questions come from the backup. "
+                    after.challenges.isNotEmpty() -> "This phone's challenge questions are kept. "
+                    else -> ""
+                },
+            )
+            if (s.wipeOnRepeatedFailure) append("Wipe after repeated wrong answers: on. ")
+            append("Everything else now on this phone is replaced. This cannot be undone.")
+        }
+    }
+
     private fun restoreLockedMessage(): String? {
         val until = services.deviceSettings.restoreLockedUntilMillis
         if (until <= services.clock.millis()) return null
@@ -629,9 +652,9 @@ class MainViewModel(
     }
 
     /** Forgets a staged passphrase or backup when its approval is abandoned. */
-    private fun discardStaged(pending: PendingConfirmation?) {
-        if (pending == null || !pending.action.toolId.startsWith("backup.")) return
-        listOf("key", "staged").forEach { k -> (pending.action.args[k] as? JsonPrimitive)?.content?.let(services.backupStaging::discard) }
+    private fun discardStaged(action: ProposedAction?) {
+        if (action == null || !action.toolId.startsWith("backup.")) return
+        listOf("key", "staged").forEach { k -> (action.args[k] as? JsonPrimitive)?.content?.let(services.backupStaging::discard) }
     }
 
     /** A restore replaced every store: read everything again and re-register reminders and routines. */
@@ -658,7 +681,7 @@ class MainViewModel(
     }
 
     fun onCancelPending() {
-        discardStaged(_state.value.pending)
+        discardStaged(_state.value.pending?.action)
         _state.update { it.copy(pending = null, authRequest = null, challenge = null) }
     }
 
@@ -685,7 +708,7 @@ class MainViewModel(
                         advance(pending.copy(steps = pending.steps - ApprovalStep.DEVICE_CREDENTIAL))
                     }
                     AuthOutcome.CANCELLED -> {
-                        discardStaged(pending)
+                        discardStaged(pending.action)
                         _state.update { it.copy(pending = null, message = "Cancelled.") }
                     }
                     AuthOutcome.UNAVAILABLE ->
@@ -693,6 +716,7 @@ class MainViewModel(
                             val rest = pending.steps - ApprovalStep.DEVICE_CREDENTIAL
                             advance(pending.copy(steps = if (ApprovalStep.CHALLENGE in rest) rest else rest + ApprovalStep.CHALLENGE))
                         } else {
+                            discardStaged(pending.action)
                             _state.update {
                                 it.copy(pending = null, message = "Set a screen lock on this phone (or challenge questions in Privacy) to approve this.")
                             }
@@ -717,7 +741,7 @@ class MainViewModel(
     }
 
     fun onCancelChallenge() {
-        discardStaged(_state.value.pending)
+        discardStaged(_state.value.pending?.action)
         _state.update { it.copy(challenge = null, pending = null) }
     }
 
@@ -749,7 +773,7 @@ class MainViewModel(
         backgroundedAt = null
         val settings = _state.value.security
         if (settings.appLockEnabled && Duration.between(since, services.clock.instant()) >= Duration.ofMinutes(settings.lockAfterMinutes.toLong())) {
-            discardStaged(_state.value.pending)
+            discardStaged(_state.value.pending?.action)
             onCancelBackupPrompt()
             _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null) }
         }
@@ -796,10 +820,14 @@ class MainViewModel(
             ChallengeGate.Open -> _state.update { it.copy(challenge = prompt.copy(error = "That's not right. Try again.")) }
             is ChallengeGate.LockedUntil -> {
                 val at = gate.until.atZone(services.clock.zone).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
+                discardStaged(_state.value.pending?.action)
                 _state.update { it.copy(challenge = null, pending = null, message = "Too many wrong answers. Try again after $at.") }
             }
-            ChallengeGate.RequireCredential -> _state.update {
-                it.copy(challenge = null, pending = null, locked = it.security.appLockEnabled || it.locked, message = "Too many wrong answers. Unlock with your screen lock.")
+            ChallengeGate.RequireCredential -> {
+                discardStaged(_state.value.pending?.action)
+                _state.update {
+                    it.copy(challenge = null, pending = null, locked = it.security.appLockEnabled || it.locked, message = "Too many wrong answers. Unlock with your screen lock.")
+                }
             }
             ChallengeGate.Wipe -> wipeEverything()
         }
@@ -832,6 +860,7 @@ class MainViewModel(
                 } else {
                     services.orchestrator.execute(pending.action, Requester.USER, confirmation)
                 }
+                discardStaged(pending.action)
                 if (r is ExecutionResult.Done && pending.action.toolId == "data.deleteAll") {
                     wipeEverything()
                     return
@@ -840,7 +869,8 @@ class MainViewModel(
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 if (pending.action.toolId.startsWith("memory.")) loadMemories()
-                if (r is ExecutionResult.Done && pending.action.toolId == "backup.restore") afterRestore()
+                // Reload after any restore that ran, so the screens never show settings the stores no longer hold.
+                if (pending.action.toolId == "backup.restore" && (r is ExecutionResult.Done || r is ExecutionResult.Failed)) afterRestore()
                 if (r is ExecutionResult.Done && pending.action.toolId == "history.prune") {
                     (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let(::applyHistoryKeepDays)
                 }
@@ -848,7 +878,7 @@ class MainViewModel(
                 val message = when {
                     done && pending.action.toolId == "memory.activate" -> "Kept. The agent will use it."
                     done && pending.action.toolId == "backup.create" -> "Backup saved. Keep the file and your passphrase somewhere safe."
-                    done && pending.action.toolId == "backup.restore" -> "Restored. Your tasks, routines, memories and settings are back."
+                    done && pending.action.toolId == "backup.restore" -> "Restored. Your tasks, routines, memories and settings are back. Check that this phone has a screen lock: approvals need it."
                     else -> describe(r)
                 }
                 _state.update { it.copy(message = message) }
@@ -886,7 +916,10 @@ class MainViewModel(
                 val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
                 advance(PendingConfirmation(action, r.actionFingerprint, title, body, steps))
             }
-            else -> _state.update { it.copy(message = describe(r)) }
+            else -> {
+                discardStaged(action)
+                _state.update { it.copy(message = describe(r)) }
+            }
         }
     }
 
