@@ -52,13 +52,17 @@ internal class TestServices(
     override val deviceSettings = object : DeviceSettings {
         override var calendarInPlans = false
         override var smartModel = true
-        override var historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
-        override var lockScreenText = false
-        override var widgetTitles = false
+        // The privacy switches are the ones the `settings.privacy` tool in the test graph changes.
+        override var historyKeepDays: Int by graph.privacy::historyKeepDays
+        override var lockScreenText: Boolean by graph.privacy::lockScreenText
+        override var widgetTitles: Boolean by graph.privacy::widgetTitles
         override var themeMode = "SYSTEM"
         override var dynamicColor = false
         override var restoreFailures = 0
         override var restoreLockedUntilMillis = 0L
+        override var restoreFailuresFile = ""
+        override var restoreLockedAtElapsed = 0L
+        override var restoreLockedBoot = -1
     }
     override val backupStaging = graph.staging
 
@@ -70,6 +74,18 @@ internal class TestServices(
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false
     var widgetRefreshes = 0
+
+    /** The uptime clock and boot number; tests move them to check the Restore lock. */
+    var elapsedNow = 1_000_000L
+    var boots = 1
+    override fun elapsedMillis() = elapsedNow
+    override fun bootCount() = boots
+
+    /** The focus-end alarm the app asked for; null when none. */
+    var focusEndAt: Long? = null
+    override fun scheduleFocusEnd(atMillis: Long?) {
+        focusEndAt = atMillis
+    }
 
     override fun refreshWidget() {
         widgetRefreshes++

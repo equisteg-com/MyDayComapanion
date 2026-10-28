@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.memory.MemoryItem
@@ -95,11 +96,26 @@ fun MemoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
-        item { Text("Remembered", style = MaterialTheme.typography.titleMedium) }
+        val hasPrivate = state.keptMemories.any { it.sensitivity == MemorySensitivity.SENSITIVE }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Remembered", style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
+                // Private memories stay hidden from whoever has the app open until the owner verifies (OQ-22 a).
+                if (hasPrivate) {
+                    if (state.privateShown) {
+                        TextButton(onClick = viewModel::onHidePrivate, modifier = Modifier.testTag("hide-private")) { Text("Hide private") }
+                    } else {
+                        TextButton(onClick = viewModel::onShowPrivate, enabled = !state.busy, modifier = Modifier.testTag("show-private")) { Text("Show private") }
+                    }
+                }
+            }
+        }
         if (state.keptMemories.isEmpty()) {
             item { Text("Nothing yet. Add something below, or keep a suggestion.", style = MaterialTheme.typography.bodySmall) }
         }
-        items(state.keptMemories, key = { it.id }) { m -> KeptMemory(m, state.busy) { viewModel.onDeleteMemory(m.id) } }
+        items(state.keptMemories, key = { it.id }) { m ->
+            KeptMemory(m, hidden = m.sensitivity == MemorySensitivity.SENSITIVE && !state.privateShown, busy = state.busy) { viewModel.onDeleteMemory(m.id) }
+        }
 
         if (viewModel.memoryEnabled) {
             item {
@@ -132,10 +148,14 @@ fun MemoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun KeptMemory(m: MemoryItem, busy: Boolean, onForget: () -> Unit) {
+private fun KeptMemory(m: MemoryItem, hidden: Boolean, busy: Boolean, onForget: () -> Unit) {
     Row(Modifier.fillMaxWidth().testTag("memory-${m.id}"), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
-            Text(m.content)
+            if (hidden) {
+                Text("Private memory", fontStyle = FontStyle.Italic, modifier = Modifier.testTag("memory-hidden-${m.id}"))
+            } else {
+                Text(m.content)
+            }
             Text(
                 listOfNotNull(
                     if (m.source == MemorySource.USER_EXPLICIT) "You told it" else "You kept a suggestion",

@@ -27,6 +27,9 @@ import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
+import androidx.compose.ui.test.hasText
+import com.equisteg.mydaycompanion.ui.AuthPurpose
+import com.equisteg.mydaycompanion.ui.AuthOutcome
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -83,6 +86,34 @@ class MemoryHistoryUiTest {
         compose.onNodeWithTag("nav-HISTORY").performClick()
         compose.waitForIdle()
         assertFalse(secure(), "the flag goes with the Memory screen")
+    }
+
+    @Test
+    fun `private memories stay hidden until the owner verifies, and hide again on leaving`() {
+        runBlocking {
+            graph.memories.upsert(
+                MemoryItem("s1", MemoryType.PREFERENCE, "Therapy on Tuesdays", MemorySource.USER_EXPLICIT, 1.0, MemoryStatus.ACTIVE, MemorySensitivity.SENSITIVE, Retention.UNTIL_DELETED, createdAt = now, updatedAt = now),
+            )
+        }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        compose.setContent { AppNavigation(vm) }
+        compose.onNodeWithTag("nav-MEMORY").performClick()
+        compose.waitUntil(5_000) { has("memory-hidden-s1") }
+        assertTrue(compose.onAllNodes(hasText("Therapy on Tuesdays")).fetchSemanticsNodes().isEmpty(), "text hidden")
+
+        compose.onNodeWithTag("show-private").performClick()
+        assertEquals(AuthPurpose.REVEAL, vm.state.value.authRequest?.purpose)
+        vm.onDeviceAuthResult(AuthOutcome.CANCELLED)
+        compose.waitForIdle()
+        assertTrue(has("memory-hidden-s1"), "a cancelled prompt shows nothing")
+
+        compose.onNodeWithTag("show-private").performClick()
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Therapy on Tuesdays")).fetchSemanticsNodes().isNotEmpty() }
+
+        vm.onAppBackground()
+        compose.waitUntil(5_000) { has("memory-hidden-s1") }
+        assertTrue(graph.audit.entries.none { "Therapy" in it.detail.orEmpty() })
     }
 
     @Test
@@ -144,6 +175,7 @@ class MemoryHistoryUiTest {
         assertFalse(services.deviceSettings.lockScreenText)
         compose.onNodeWithTag("lock-screen-text").performScrollTo().performClick().assertIsOn()
         assertTrue(services.deviceSettings.lockScreenText)
+        assertEquals("setting=lockScreenText value=on", graph.audit.entries.last { it.action == "settings.privacy" }.detail)
         assertTrue(has("open-security-settings"))
         assertEquals(androidx.core.app.NotificationCompat.VISIBILITY_PRIVATE, com.equisteg.mydaycompanion.reminders.lockScreenVisibility(false))
         assertEquals(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC, com.equisteg.mydaycompanion.reminders.lockScreenVisibility(true))

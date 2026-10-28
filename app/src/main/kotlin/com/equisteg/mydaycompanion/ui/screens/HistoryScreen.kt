@@ -61,6 +61,8 @@ private val ACTION_NAMES = mapOf(
     "data.deleteAll" to "Deleted everything",
     "security.updateSettings" to "Changed security settings",
     "security.setChallenges" to "Changed challenge questions",
+    "tasks.rollOver" to "Moved unfinished tasks",
+    "settings.privacy" to "Changed a privacy switch",
     "unknown" to "Blocked an unknown action",
 )
 
@@ -86,9 +88,9 @@ fun HistoryScreen(state: UiState, onFilter: (HistoryFilter) -> Unit, onKeepDays:
             }
         }
         if (shown.isEmpty()) {
-            item { Text(if (state.history.isEmpty()) "Nothing has happened yet." else "Nothing matches this filter.", modifier = Modifier.testTag("history-empty")) }
+            item { Text(if (state.historyFilter == HistoryFilter.ALL) "Nothing has happened yet." else "Nothing matches this filter.", modifier = Modifier.testTag("history-empty")) }
         }
-        items(shown, key = { it.id }) { e -> HistoryRow(e) }
+        items(shown, key = { it.id }) { e -> HistoryRow(e, fromBackup = state.restoredAt?.let { e.timestamp < it } == true) }
         item {
             Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Keep history for", style = MaterialTheme.typography.titleSmall)
@@ -110,7 +112,7 @@ fun HistoryScreen(state: UiState, onFilter: (HistoryFilter) -> Unit, onKeepDays:
 }
 
 @Composable
-private fun HistoryRow(e: AuditEntry) {
+private fun HistoryRow(e: AuditEntry, fromBackup: Boolean) {
     val problem = e.decision == AuditDecision.DENIED || e.outcome == AuditOutcome.FAILURE || e.outcome == AuditOutcome.VERIFICATION_FAILED
     Column(Modifier.testTag("history-${e.id}")) {
         Text(
@@ -125,6 +127,8 @@ private fun HistoryRow(e: AuditEntry) {
                 e.decision.name.lowercase().replace('_', ' '),
                 e.outcome.name.lowercase().replace('_', ' '),
                 e.reasonCode?.lowercase()?.replace('_', ' '),
+                // Entries older than the last restore came in with the backup (OQ-24 c).
+                if (fromBackup) "from backup" else null,
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
         )

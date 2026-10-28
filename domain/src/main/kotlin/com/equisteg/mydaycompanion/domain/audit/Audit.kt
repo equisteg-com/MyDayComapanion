@@ -40,6 +40,14 @@ interface AuditLog : ErasableStore {
 
     /** Removes entries older than [instant] (history retention, F16) and returns how many went. */
     suspend fun deleteBefore(instant: Instant): Int
+
+    /** The newest [limit] entries that [filter] shows; Room filters in SQL so older matches aren't missed (OQ-22 c). */
+    suspend fun recentMatching(filter: HistoryFilter, limit: Int): List<AuditEntry> =
+        all().filter(filter::matches).sortedByDescending { it.timestamp }.take(limit)
+
+    /** The newest successful run of [action], e.g. the last restore, which marks the entries imported with it. */
+    suspend fun latestSuccess(action: String): AuditEntry? =
+        all().filter { it.action == action && it.outcome == AuditOutcome.SUCCESS }.maxByOrNull { it.timestamp }
 }
 
 /** The History screen's filters (F16). Pure, so the screen and the tests agree on what each one shows. */

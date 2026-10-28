@@ -425,6 +425,7 @@ app/
 | `tasks.delete` (one task) | L2 | yes | tap always |
 | `tasks.complete` / `tasks.reopen` | L1 | yes | tap when agent-proposed |
 | `tasks.rollOver` (open, non-routine tasks from earlier days, with their steps, to today or up to 14 days ahead; max 50) | L2 | yes | tap when agent-proposed; screen lock if any is personal |
+| `settings.privacy` (lock-screen text, widget names, History period; recorded in History without content) | L1 | no | never (owner only) |
 | `plan.generate` | L1 | yes | never |
 | `routines.save` / `routines.delete` | L2 | yes | tap |
 | `reminders.schedule` / `reminders.cancel` | L1 | yes | never (owner approved the item) |
@@ -555,6 +556,7 @@ Earlier open questions OQ-01…OQ-14 in `docs/prebuild/12-open-questions.md` sti
 | 6 | follow-up | F9 memory review, F13 backup/restore, F14 theft-protection settings, F16 history filters, F19 widget |
 | 7a | follow-up | New look (palette, light/dark, My day redesign, last-7-days insights) — founder request "best advanced aesthetic UI" (2026-10-28) |
 | 7b | follow-up | Smarter agent on My day: chat answers (what's next / left), move by chat (F2), roll-over of unfinished tasks (§6.5, `tasks.rollOver`), focus timer — founder request "more to make a powerful agentic AI product" (2026-10-28); focus timer limits in OQ-27 |
+| 8 | follow-up | Hardening from the 6a, 6b and 7b reviews: private memories hidden until verified, privacy switches recorded in History, History filters in SQL; Restore guess count tied to the file and the lock on the uptime clock, imported History marked, restored days re-planned on view; focus end notification; a move re-checked right before it runs (OQ-22, OQ-24, OQ-27) |
 
 Each PR updates `PROGRESS.md`, `CHANGELOG.md`, the test-case workbook, `docs/prebuild/06` (permissions) and `11` (dependencies) where relevant.
 

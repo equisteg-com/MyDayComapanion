@@ -86,6 +86,14 @@ interface AuditDao {
     // same second as the cut-off sorts before it and goes too; at most one second early, which is fine for retention.
     @Query("SELECT COUNT(*) FROM audit_log WHERE timestamp < :before") suspend fun countBefore(before: String): Int
     @Query("DELETE FROM audit_log WHERE timestamp < :before") suspend fun deleteBefore(before: String): Int
+    @Query(
+        "SELECT * FROM audit_log WHERE (:actor IS NULL OR actor = :actor) " +
+            "AND (:attention = 0 OR decision = 'DENIED' OR outcome IN ('FAILURE', 'VERIFICATION_FAILED')) " +
+            "AND (:highRisk = 0 OR riskLevel IN ('L3', 'L4')) ORDER BY timestamp DESC LIMIT :limit",
+    )
+    suspend fun recentMatching(actor: String?, attention: Boolean, highRisk: Boolean, limit: Int): List<AuditEntity>
+    @Query("SELECT * FROM audit_log WHERE action = :action AND outcome = 'SUCCESS' ORDER BY timestamp DESC LIMIT 1")
+    suspend fun latestSuccess(action: String): AuditEntity?
     @Query("DELETE FROM audit_log") suspend fun deleteAll()
     @Query("SELECT COUNT(*) FROM audit_log") suspend fun count(): Int
 }

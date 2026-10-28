@@ -47,6 +47,7 @@ class AlarmNotificationScheduler(
     fun cancelEverything() {
         cancelReminders()
         cancelSnoozes(context)
+        FocusAlarm.schedule(context, null)
         androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
         alarms.cancel(maintenanceIntent(PendingIntent.FLAG_UPDATE_CURRENT) ?: return)
     }

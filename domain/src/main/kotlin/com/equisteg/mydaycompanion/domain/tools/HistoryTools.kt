@@ -45,3 +45,76 @@ class PruneHistoryTool(private val audit: AuditLog, private val clock: Clock) : 
         fun args(keepDays: Int) = JsonObject(mapOf("keepDays" to JsonPrimitive(keepDays.toString())))
     }
 }
+
+/** The owner's privacy switches that live outside the encrypted database (they hold no personal content). */
+interface PrivacySwitches {
+    /** Show what a reminder is for on the secure lock screen. */
+    var lockScreenText: Boolean
+
+    /** Show task and event names on the home-screen widget. */
+    var widgetTitles: Boolean
+
+    /** How many days History keeps; one of [HistoryRetention.CHOICES_DAYS]. */
+    var historyKeepDays: Int
+}
+
+/**
+ * settings.privacy — changes one privacy switch and records it in History (OQ-22 b), so a change
+ * made by whoever held the unlocked phone is visible later. The entry says which switch and its new
+ * value only. Owner only; a shorter History period first goes through `history.prune`.
+ * Args: {"setting":"lockScreenText"|"widgetTitles"|"historyKeepDays","value":"on"|"off"|"<days>"}
+ */
+class PrivacySettingsTool(private val switches: PrivacySwitches) : AgentTool {
+    override val spec = ToolSpec(
+        id = "settings.privacy",
+        description = "Change a privacy switch (lock-screen text, widget names, History period).",
+        riskLevel = RiskLevel.L1,
+        agentProposable = false,
+        confirmation = Confirmation.NEVER,
+        verification = "The switch reads back the new value.",
+    )
+
+    private fun parse(args: JsonObject): Pair<String, String>? {
+        if (args.keys != setOf("setting", "value")) return null
+        val setting = args.string("setting") ?: return null
+        val value = args.string("value") ?: return null
+        val ok = when (setting) {
+            LOCK_SCREEN_TEXT, WIDGET_TITLES -> value == ON || value == OFF
+            HISTORY_KEEP_DAYS -> value.toIntOrNull() in HistoryRetention.CHOICES_DAYS
+            else -> false
+        }
+        return if (ok) setting to value else null
+    }
+
+    override fun validate(args: JsonObject): ArgsValidation = if (parse(args) != null) ArgsValidation.Ok else ArgsValidation.Rejected("privacySetting")
+
+    override suspend fun execute(args: JsonObject): ToolOutcome {
+        val (setting, value) = parse(args) ?: return ToolOutcome.Failure("INVALID")
+        when (setting) {
+            LOCK_SCREEN_TEXT -> switches.lockScreenText = value == ON
+            WIDGET_TITLES -> switches.widgetTitles = value == ON
+            HISTORY_KEEP_DAYS -> switches.historyKeepDays = value.toInt()
+        }
+        return ToolOutcome.Success("setting=$setting value=$value")
+    }
+
+    override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
+        val (setting, value) = parse(args) ?: return false
+        return when (setting) {
+            LOCK_SCREEN_TEXT -> switches.lockScreenText == (value == ON)
+            WIDGET_TITLES -> switches.widgetTitles == (value == ON)
+            else -> switches.historyKeepDays == value.toInt()
+        }
+    }
+
+    companion object {
+        const val LOCK_SCREEN_TEXT = "lockScreenText"
+        const val WIDGET_TITLES = "widgetTitles"
+        const val HISTORY_KEEP_DAYS = "historyKeepDays"
+        private const val ON = "on"
+        private const val OFF = "off"
+
+        fun args(setting: String, value: String) = JsonObject(mapOf("setting" to JsonPrimitive(setting), "value" to JsonPrimitive(value)))
+        fun args(setting: String, on: Boolean) = args(setting, if (on) ON else OFF)
+    }
+}

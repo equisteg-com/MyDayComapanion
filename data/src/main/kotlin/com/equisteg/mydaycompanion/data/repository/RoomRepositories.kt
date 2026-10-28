@@ -162,6 +162,21 @@ class RoomAuditLog(db: MdcDatabase) : AuditLog {
     fun observeRecent(limit: Int): Flow<List<AuditEntry>> = dao.observeRecent(limit).map { l -> l.map { it.toDomain() } }
     override suspend fun countBefore(instant: java.time.Instant) = dao.countBefore(instant.toString())
     override suspend fun deleteBefore(instant: java.time.Instant) = dao.deleteBefore(instant.toString())
+    override suspend fun recentMatching(filter: com.equisteg.mydaycompanion.domain.audit.HistoryFilter, limit: Int): List<AuditEntry> {
+        val actor = when (filter) {
+            com.equisteg.mydaycompanion.domain.audit.HistoryFilter.BY_ME -> AuditActor.USER.name
+            com.equisteg.mydaycompanion.domain.audit.HistoryFilter.BY_ASSISTANT -> AuditActor.AGENT.name
+            com.equisteg.mydaycompanion.domain.audit.HistoryFilter.AUTOMATIC -> AuditActor.SYSTEM.name
+            else -> null
+        }
+        return dao.recentMatching(
+            actor = actor,
+            attention = filter == com.equisteg.mydaycompanion.domain.audit.HistoryFilter.ATTENTION,
+            highRisk = filter == com.equisteg.mydaycompanion.domain.audit.HistoryFilter.HIGH_RISK,
+            limit = limit,
+        ).map { it.toDomain() }
+    }
+    override suspend fun latestSuccess(action: String) = dao.latestSuccess(action)?.toDomain()
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun count() = dao.count()
 }

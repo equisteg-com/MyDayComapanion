@@ -139,12 +139,14 @@ class AgentChatUiTest {
         assertTrue(!vm.state.value.locked)
         vm.say("focus 30 min on report")
         assertNotNull(vm.state.value.focus)
+        assertNotNull(services.focusEndAt)
         vm.onAppBackground()
         vm.onAppForeground()
         idle()
         assertTrue(vm.state.value.locked)
         assertNull(vm.state.value.focus)
         assertTrue(vm.state.value.chat.isEmpty())
+        assertNull(services.focusEndAt, "no focus alarm after the lock")
         vm.onFocusTick()
         assertNull(vm.state.value.suggestion)
     }
@@ -187,6 +189,24 @@ class AgentChatUiTest {
     }
 
     @Test
+    fun `a personal task changed during verification is not overwritten`() {
+        seed(task("p", "Pick up medicine", personal = true))
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        vm.say("move medicine to friday")
+        vm.onAcceptSuggestion()
+        idle()
+        assertNotNull(vm.state.value.authRequest, "screen lock asked")
+        // Edited while the system prompt was up.
+        runBlocking { graph.tasks.upsert(listOf(graph.tasks.get("p")!!.copy(notes = "bring the card"))) }
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        idle()
+        val stored = runBlocking { graph.tasks.get("p") }!!
+        assertEquals(today, stored.date)
+        assertEquals("bring the card", stored.notes)
+        assertEquals("That task changed since I offered this, so I left it. Ask me again.", vm.lastReply())
+    }
+
+    @Test
     fun `unfinished tasks from yesterday roll over from the banner`() {
         seed(task("y", "Finish slides", date = today.minusDays(1)), task("t", "Today's task"))
         val vm = MainViewModel(services, Dispatchers.Unconfined)
@@ -218,10 +238,14 @@ class AgentChatUiTest {
         idle()
         assertEquals(TaskStatus.DONE, runBlocking { graph.tasks.get("a")?.status })
 
+        assertNull(services.focusEndAt, "the end alarm goes with the session")
+
         vm.say("focus")
         assertEquals(25, vm.state.value.focus?.minutes)
+        assertEquals(graph.clock.millis() + 25 * 60_000L, services.focusEndAt, "the end shows even if the app is closed")
         vm.onStopFocus()
         assertNull(vm.state.value.focus)
+        assertNull(services.focusEndAt)
     }
 
     @Test

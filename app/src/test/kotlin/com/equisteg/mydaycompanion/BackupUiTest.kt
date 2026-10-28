@@ -166,4 +166,68 @@ class BackupUiTest {
         vm.onCancelBackupPrompt()
         assertNull(vm.state.value.backupPrompt)
     }
+
+    @Test
+    fun `opening a different backup does not reset wrong guesses on the first one`() {
+        val graph = TestGraph()
+        val target = oldPhoneBackup()
+        val other = oldPhoneBackup()
+        assertTrue(!target.contentEquals(other), "two backups differ (salt and nonce)")
+        val services = TestServices(graph).apply { backupFile = target }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        idle()
+
+        vm.onRestoreFileChosen(picked)
+        idle()
+        vm.onRestorePassphrase("wrong horse battery".toCharArray())
+        idle()
+        assertEquals(1, services.deviceSettings.restoreFailures)
+
+        // A backup the person holding the phone can open doesn't clear the count on the first file.
+        vm.onCancelBackupPrompt()
+        services.backupFile = other
+        vm.onRestoreFileChosen(picked)
+        idle()
+        vm.onRestorePassphrase(passphrase.toCharArray())
+        idle()
+        assertNotNull(vm.state.value.pending)
+        vm.onCancelPending()
+        assertEquals(1, services.deviceSettings.restoreFailures)
+
+        // The right passphrase on the first file does.
+        services.backupFile = target
+        vm.onRestoreFileChosen(picked)
+        idle()
+        vm.onRestorePassphrase(passphrase.toCharArray())
+        idle()
+        assertEquals(0, services.deviceSettings.restoreFailures)
+    }
+
+    @Test
+    fun `setting the phone's clock forward doesn't reopen Restore`() {
+        val graph = TestGraph()
+        val services = TestServices(graph).apply { backupFile = oldPhoneBackup() }
+        services.deviceSettings.restoreFailures = 9
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        idle()
+        vm.onRestoreFileChosen(picked)
+        idle()
+        vm.onRestorePassphrase("wrong horse battery".toCharArray())
+        idle()
+        assertTrue(vm.state.value.message.orEmpty().startsWith("Too many wrong passphrases"))
+
+        // The wall clock says the hour is over, but only ten minutes of uptime have passed.
+        services.deviceSettings.restoreLockedUntilMillis = graph.clock.millis() - 1
+        services.elapsedNow += 10 * 60_000L
+        vm.onRestoreFileChosen(picked)
+        idle()
+        assertNull(vm.state.value.backupPrompt, "still closed")
+        assertTrue(vm.state.value.message.orEmpty().startsWith("Too many wrong passphrases"))
+
+        // A full hour of uptime opens it again.
+        services.elapsedNow += 50 * 60_000L
+        vm.onRestoreFileChosen(picked)
+        idle()
+        assertEquals(BackupPrompt.Kind.RESTORE, vm.state.value.backupPrompt?.kind)
+    }
 }

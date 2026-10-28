@@ -130,3 +130,9 @@ class InMemorySecurityStore(private var current: SecuritySettings? = null) : Sec
     override suspend fun deleteAll() { current = null; answers.clear(); failed.clear() }
     override suspend fun count() = (if (current == null) 0 else 1) + answers.size + failed.size
 }
+
+class InMemoryPrivacySwitches : com.equisteg.mydaycompanion.domain.tools.PrivacySwitches {
+    override var lockScreenText = false
+    override var widgetTitles = false
+    override var historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
+}
