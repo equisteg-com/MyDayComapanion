@@ -48,7 +48,8 @@ class MemoryHistoryUiTest {
 
     private fun secure() = compose.activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
 
-    private fun has(tag: String) = compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
+    // Unmerged: the badge's tag sits inside the navigation item, which merges its children.
+    private fun has(tag: String) = compose.onAllNodes(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     @Test
     fun `the owner keeps a suggestion, adds a memory and forgets one, on a screen that can't be captured`() {
