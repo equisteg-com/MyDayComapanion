@@ -40,8 +40,19 @@ jobs:
         # Debug key only: release signing stays in the release pipeline's secrets.
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore-v1
+          path: ~/.mdc/debug.keystore
+          key: android-debug-keystore-v2
+
+      - name: Create the debug key if the cache had none
+        # The path is passed to Gradle (MDC_DEBUG_KEYSTORE in app/build.gradle.kts), so the key is always where
+        # the cache saves it. Standard debug key values (public by design).
+        run: |
+          echo "MDC_DEBUG_KEYSTORE=$HOME/.mdc/debug.keystore" >> "$GITHUB_ENV"
+          if [ ! -f "$HOME/.mdc/debug.keystore" ]; then
+            mkdir -p "$HOME/.mdc"
+            keytool -genkeypair -v -keystore "$HOME/.mdc/debug.keystore" -storepass android -keypass android \
+              -alias androiddebugkey -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
 
       - name: Keep a copy of the committed Room schemas
         run: mkdir -p "$RUNNER_TEMP/schemas" && cp -R data/schemas/. "$RUNNER_TEMP/schemas/"

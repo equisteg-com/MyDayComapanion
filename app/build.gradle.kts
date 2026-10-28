@@ -17,6 +17,18 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // Test builds from CI share one key kept in the Actions cache (CHG-002), so a newer build installs over
+            // an older one. Local builds keep Android Studio's own debug key.
+            System.getenv("MDC_DEBUG_KEYSTORE")?.let { storeFile = file(it) }
+            // Some phones' installers (vivo / iQOO) refuse an APK signed only with the v2 scheme, which is
+            // what minSdk 26 gives by default. Signing with v1 as well costs nothing.
+            enableV1Signing = true
+            enableV2Signing = true
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
