@@ -133,6 +133,11 @@ interface DeviceSettings {
     var restoreFailures: Int
     var restoreLockedUntilMillis: Long
 
+    companion object {
+        /** Match the phone; the UI maps unknown names to this too. */
+        const val DEFAULT_THEME_MODE = "SYSTEM"
+    }
+
     /** Back to the defaults; part of "Delete everything" and the panic wipe. */
     fun reset() {
         calendarInPlans = false
@@ -140,7 +145,7 @@ interface DeviceSettings {
         historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         lockScreenText = false
         widgetTitles = false
-        themeMode = com.equisteg.mydaycompanion.ui.theme.ThemeMode.SYSTEM.name
+        themeMode = DEFAULT_THEME_MODE
         dynamicColor = false
     }
 }
@@ -165,7 +170,7 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
         get() = prefs.getBoolean("widget_titles", false)
         set(value) = prefs.edit().putBoolean("widget_titles", value).apply()
     override var themeMode: String
-        get() = prefs.getString("theme_mode", null) ?: com.equisteg.mydaycompanion.ui.theme.ThemeMode.SYSTEM.name
+        get() = prefs.getString("theme_mode", null) ?: DeviceSettings.DEFAULT_THEME_MODE
         set(value) = prefs.edit().putString("theme_mode", value).apply()
     override var dynamicColor: Boolean
         get() = prefs.getBoolean("dynamic_color", false)

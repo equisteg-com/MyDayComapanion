@@ -142,17 +142,18 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
                     ) {
                         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            proposal.previewPlans.forEach { preview ->
-                                Text("Proposed plan for ${preview.date.format(dayFormat)}", style = MaterialTheme.typography.titleMedium)
-                                Timeline(preview, statusById = emptyMap(), onToggle = null, tag = "preview-${preview.date}")
-                            }
-                            proposal.warnings.forEach { Text("ℹ $it", style = MaterialTheme.typography.bodySmall) }
-                            Text("Nothing is saved until you confirm.", style = MaterialTheme.typography.bodySmall)
+                            // The decision comes first, so it is on screen however long the plan is.
+                            Text("Here's my plan. Nothing is saved until you confirm.", style = MaterialTheme.typography.bodyMedium)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = viewModel::onAcceptProposal, enabled = !state.busy && state.proposal != null, modifier = Modifier.testTag("accept")) {
                                     Text(if (proposal.previewPlans.size > 1) "Add to my days" else "Add to my day")
                                 }
                                 OutlinedButton(onClick = viewModel::onDiscardProposal, enabled = state.proposal != null) { Text("Discard") }
+                            }
+                            proposal.warnings.forEach { Text("ℹ $it", style = MaterialTheme.typography.bodySmall) }
+                            proposal.previewPlans.forEach { preview ->
+                                Text("Proposed plan for ${preview.date.format(dayFormat)}", style = MaterialTheme.typography.titleMedium)
+                                Timeline(preview, statusById = emptyMap(), onToggle = null, tag = "preview-${preview.date}", compact = true)
                             }
                         }
                     }

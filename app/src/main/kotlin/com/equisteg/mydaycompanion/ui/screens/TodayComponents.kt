@@ -148,15 +148,16 @@ fun Timeline(
     tag: String,
     now: LocalTime? = null,
     onEdit: ((String) -> Unit)? = null,
+    compact: Boolean = false,
 ) {
-    Column(Modifier.testTag(tag), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        plan.blocks.forEach { block -> TimelineRow(block, statusById[block.refId] == TaskStatus.DONE, onToggle, now, onEdit) }
+    Column(Modifier.testTag(tag), verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
+        plan.blocks.forEach { block -> TimelineRow(block, statusById[block.refId] == TaskStatus.DONE, onToggle, now, onEdit, compact) }
         plan.issues.forEach { Text("⚠ ${it.message}", style = MaterialTheme.typography.bodySmall) }
     }
 }
 
 @Composable
-private fun TimelineRow(block: PlanBlock, done: Boolean, onToggle: ((String) -> Unit)?, now: LocalTime?, onEdit: ((String) -> Unit)?) {
+private fun TimelineRow(block: PlanBlock, done: Boolean, onToggle: ((String) -> Unit)?, now: LocalTime?, onEdit: ((String) -> Unit)?, compact: Boolean) {
     val colors = MaterialTheme.colorScheme
     val isTask = block.kind == BlockKind.TASK
     val current = now != null && block.start <= now && now < block.end && !done
@@ -174,7 +175,7 @@ private fun TimelineRow(block: PlanBlock, done: Boolean, onToggle: ((String) -> 
         color = if (current) colors.secondaryContainer else colors.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth(),
     ) {
-        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = if (compact) 4.dp else 8.dp).height(androidx.compose.foundation.layout.IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.width(52.dp)) {
                 Text("${block.start}", style = MaterialTheme.typography.labelLarge)
                 Text("${block.end}", style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)

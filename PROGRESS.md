@@ -12,6 +12,8 @@
   new is stored.
 - Motion: the proposal card slides in and out, the ring and bars animate, tabs cross-fade.
 - No new dependency or permission; no database change (two new device settings: theme and wallpaper colours).
+- Agent chat moved to part 7b (Smarter agent), where the new commands give it something to say. The review
+  follow-ups OQ-22 and OQ-24 and the automatic-backup question OQ-23 are retargeted to after part 7b.
 
 ## 2026-10-28 — Agent OS part 6c: home-screen widget
 
