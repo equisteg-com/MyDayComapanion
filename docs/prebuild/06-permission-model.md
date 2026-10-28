@@ -25,8 +25,11 @@
 | SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM | not planned | `setAndAllowWhileIdle` alarms need no permission; in deep idle they can arrive a few minutes late (OQ-17) | — | Not requested |
 | WRITE_CALENDAR, contacts, SMS, location, storage | not planned | — | — | Not requested |
 
-Components: one exported activity (the launcher) and one receiver, `.reminders.ReminderReceiver`, with
-`exported="false"`; `ManifestSecurityTest` fails on any other receiver, any exported receiver, or any service or provider.
+Components: one exported activity (the launcher) and two receivers, both with `exported="false"`:
+`.reminders.ReminderReceiver` and `.widget.TodayWidgetProvider` (the home-screen widget, F19; the system's widget
+service delivers its updates, and the app's own refreshes are explicit broadcasts). The widget needs no permission and
+only reads today's plan; names are hidden unless the owner turns on "Show names on the widget", and a personal task
+never shows its name. `ManifestSecurityTest` fails on any other receiver, any exported receiver, or any service or provider.
 
 Adding one requires: a row here, the allowlist in `ManifestSecurityTest`, a just-in-time rationale screen, and
 graceful behaviour when denied.

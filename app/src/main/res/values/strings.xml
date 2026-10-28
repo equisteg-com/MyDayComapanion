@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">MyDayCompanion</string>
+    <string name="widget_description">What is left today, and a quick way to add more</string>
+    <string name="widget_open">Open MyDayCompanion</string>
+    <string name="widget_add">+ Add to my day</string>
 </resources>

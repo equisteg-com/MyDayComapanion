@@ -79,6 +79,9 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
 
         HorizontalDivider()
+        WidgetSection(state, viewModel::onWidgetTitles)
+
+        HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
         BackupSection(state, onBackUp = { backupLauncher.launch(viewModel.backupFileName()) }, onRestore = { restoreLauncher.launch(arrayOf("*/*")) })
         OutlinedButton(onClick = { exportLauncher.launch("mydaycompanion-export.json") }, enabled = !state.busy) {
@@ -233,6 +236,27 @@ private fun LostPhoneSection(state: UiState, onLockScreenText: (Boolean) -> Unit
             checked = state.lockScreenText,
             onCheckedChange = onLockScreenText,
             modifier = Modifier.testTag("lock-screen-text"),
+        )
+    }
+}
+
+/** F19: the home-screen widget is outside the app lock, so names are the owner's choice. */
+@Composable
+private fun WidgetSection(state: UiState, onWidgetTitles: (Boolean) -> Unit) {
+    Text("Home-screen widget", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Long-press your home screen, tap Widgets and pick MyDayCompanion to see what's left today. Tapping it opens the app.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Show names on the widget")
+            Text("Off: the widget shows only times, "Task" and "Event". Personal tasks never show their name.", style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(
+            checked = state.widgetTitles,
+            onCheckedChange = onWidgetTitles,
+            modifier = Modifier.testTag("widget-titles"),
         )
     }
 }

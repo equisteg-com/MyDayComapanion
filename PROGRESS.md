@@ -1,5 +1,14 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 6c: home-screen widget
+
+- A MyDayCompanion widget for the home screen (F19): a headline ("3 left today · next at 14:00") and up to three
+  items with their times. Tapping it, or "+ Add to my day", opens the app (behind the app lock as usual).
+- The widget sits outside the app lock, so by default it shows only times, "Task" and "Event". Settings → Home-screen
+  widget → "Show names on the widget" adds names; a personal task never shows its name. "Delete everything" clears it.
+- It only reads today's plan; nothing changes data from the widget. Redrawn whenever the plan changes and every
+  30 minutes. Built with RemoteViews: no new dependency, no permission, and the receiver is not exported.
+
 ## 2026-10-28 — Agent OS part 6b: encrypted backup and restore
 
 - Settings → Your data → Back up: the owner picks where to save `mydaycompanion-YYYYMMDD.mdcbackup`, chooses a

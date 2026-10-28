@@ -54,6 +54,7 @@ internal class TestServices(
         override var smartModel = true
         override var historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         override var lockScreenText = false
+        override var widgetTitles = false
         override var restoreFailures = 0
         override var restoreLockedUntilMillis = 0L
     }
@@ -66,6 +67,11 @@ internal class TestServices(
     override var localModel: com.equisteg.mydaycompanion.domain.ai.LocalModelControl = com.equisteg.mydaycompanion.domain.ai.NoLocalModel
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false
+    var widgetRefreshes = 0
+
+    override fun refreshWidget() {
+        widgetRefreshes++
+    }
 
     init {
         runBlocking {

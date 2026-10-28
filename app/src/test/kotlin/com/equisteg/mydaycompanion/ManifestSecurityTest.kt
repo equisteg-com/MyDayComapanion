@@ -75,6 +75,6 @@ class ManifestSecurityTest {
         val names = (0 until receivers.length).map { receivers.item(it) as Element }.onEach {
             assertEquals("false", it.getAttributeNS(ns, "exported"), "${it.getAttributeNS(ns, "name")} must declare exported=false")
         }.map { it.getAttributeNS(ns, "name") }
-        assertEquals(listOf(".reminders.ReminderReceiver"), names)
+        assertEquals(listOf(".reminders.ReminderReceiver", ".widget.TodayWidgetProvider"), names)
     }
 }
