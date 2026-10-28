@@ -34,6 +34,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.SecureFlagPolicy
 import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
 import com.equisteg.mydaycompanion.domain.security.PersonalApproval
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
@@ -62,7 +64,8 @@ fun LockScreen(state: UiState, onUnlock: () -> Unit, onPanicWipe: () -> Unit, mo
 
 @Composable
 fun ChallengeDialog(prompt: ChallengePrompt, busy: Boolean, onAnswer: (String) -> Unit, onCancel: () -> Unit) {
-    Dialog(onDismissRequest = onCancel) {
+    // Secure: the question and answer can't be captured in a screenshot or the recent-apps preview.
+    Dialog(onDismissRequest = onCancel, properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn)) {
         Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
             ChallengeForm(prompt, busy, onAnswer, onCancel, Modifier.padding(24.dp))
         }
@@ -167,12 +170,6 @@ fun SecuritySection(
             TextButton(onClick = onRemoveChallenges, enabled = !state.busy) { Text("Remove") }
         }
     }
-    Text(
-        "If your phone is lost: lock or erase it from find.google.com (Find My Device). Turn it on now in " +
-            "Android Settings → Google → Find My Device.",
-        style = MaterialTheme.typography.bodySmall,
-    )
-
     if (editing) {
         ChallengeSetupDialog(
             onSave = { editing = false; onSaveChallenges(it) },
@@ -187,6 +184,7 @@ internal fun ChallengeSetupDialog(onSave: (List<Pair<String, String>>) -> Unit, 
     val answers = remember { mutableStateListOf(*Array(ChallengeHasher.QUESTION_COUNT) { "" }) }
     AlertDialog(
         onDismissRequest = onCancel,
+        properties = DialogProperties(securePolicy = SecureFlagPolicy.SecureOn),
         title = { Text("Challenge questions") },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {

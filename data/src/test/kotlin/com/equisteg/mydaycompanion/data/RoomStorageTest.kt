@@ -139,6 +139,20 @@ class RoomStorageTest {
     }
 
     @Test
+    fun `History retention removes only entries before the cut-off`() = runTest {
+        val log = RoomAuditLog(db)
+        fun at(i: String, t: String) = AuditEntry(i, java.time.Instant.parse(t), AuditActor.SYSTEM, "plan.generate", RiskLevel.L1, AuditDecision.ALLOWED, AuditOutcome.SUCCESS)
+        log.record(at("old", "2026-01-01T10:00:00.250Z"))
+        log.record(at("edge", "2026-04-09T07:00:00Z"))
+        log.record(at("new", "2026-10-05T23:59:59.999Z"))
+        val cutoff = java.time.Instant.parse("2026-04-09T07:00:00Z")
+        assertEquals(1, log.countBefore(cutoff))
+        assertEquals(1, log.deleteBefore(cutoff))
+        assertEquals(listOf("edge", "new"), log.all().map { it.id })
+        assertEquals(0, log.countBefore(cutoff))
+    }
+
+    @Test
     fun `export reads every table`() = runTest {
         seed()
         val export = DataExportService(

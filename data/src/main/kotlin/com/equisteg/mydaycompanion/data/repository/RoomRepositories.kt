@@ -160,6 +160,8 @@ class RoomAuditLog(db: MdcDatabase) : AuditLog {
     override suspend fun recent(limit: Int) = dao.recent(limit).map { it.toDomain() }
     override suspend fun all() = dao.all().map { it.toDomain() }
     fun observeRecent(limit: Int): Flow<List<AuditEntry>> = dao.observeRecent(limit).map { l -> l.map { it.toDomain() } }
+    override suspend fun countBefore(instant: java.time.Instant) = dao.countBefore(instant.toString())
+    override suspend fun deleteBefore(instant: java.time.Instant) = dao.deleteBefore(instant.toString())
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun count() = dao.count()
 }

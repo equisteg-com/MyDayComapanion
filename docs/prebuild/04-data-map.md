@@ -9,7 +9,7 @@
 | DM-05 | Local-first behaviour verified | PASS | No INTERNET permission (`ManifestSecurityTest`, CI APK check). |
 | DM-06 | Network calls explicitly listed | PASS | None in V1 (§Network). |
 | DM-07 | Sensitive data paths identified | PASS | §Sensitive paths. |
-| DM-08 | Retention policy defined | PASS | Column "Retention". Audit/memory pruning job is Phase 1 work. |
+| DM-08 | Retention policy defined | PASS | Column "Retention". Memory and History pruning run in the nightly maintenance (2026-10-28). |
 | DM-09 | Deletion policy defined | PASS | §Deletion; `PrivacyTest`, `RoomStorageTest`. |
 | DM-10 | Export path defined | PASS | §Export. |
 | DM-11 | No mandatory account | PASS | No account code; `accounts` flag locked off. |
@@ -25,8 +25,8 @@
 | fixed_events | title, date, start, duration, source | Personal | User text; calendar (Phase 1, read-only, not copied unless planned) | Until user deletes | Yes | Yes |
 | plans, plan_blocks | date, block titles/times, issues, planner version | Personal | Planner | Until user deletes | Yes | Yes |
 | routines | title, frequency, preferred start, duration | Personal | User | Until user deletes | Yes | Yes |
-| memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User or assistant proposal | Per item: 1 d / 30 d / 365 d / until deleted | Yes | Yes |
-| audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days (pruning Phase 1) | Yes | Yes |
+| memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User (Memory screen) or assistant proposal (habits noticed from finished, non-personal tasks) | Per item: suggestions 365 d; a turned-down suggestion keeps only a one-way hash of its text, 365 d; kept and owner-written memories until deleted; expired items removed nightly (`memory.purgeExpired`) | Yes | Yes (Memory screen, one at a time; Delete everything) |
+| audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days by default; owner chooses 30 / 90 / 180 / 365 on History; removed nightly (`history.prune`) | Yes | Yes |
 | preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
 | db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |
 | Keystore key | AES-256 wrapping key | Secret | AndroidKeyStore | Life of install | Never extractable | Removed on uninstall |

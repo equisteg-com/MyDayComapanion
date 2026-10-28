@@ -81,6 +81,9 @@ interface AppServices {
     val preferences: PreferencesStore
     val routines: RoutineRepository
 
+    /** What the agent remembers about the owner (F9); read by the Memory screen. Changes go through the orchestrator. */
+    val memories: com.equisteg.mydaycompanion.domain.memory.MemoryStore
+
     /** Owner switches kept on the phone only: "show my calendar in plans", "use Gemini Nano". */
     val deviceSettings: DeviceSettings
 
@@ -101,10 +104,18 @@ interface DeviceSettings {
     /** Use the phone's Gemini Nano to understand typed and spoken text, where the phone has it. */
     var smartModel: Boolean
 
+    /** How many days History keeps (F16); one of [com.equisteg.mydaycompanion.domain.audit.HistoryRetention.CHOICES_DAYS]. */
+    var historyKeepDays: Int
+
+    /** Show what a reminder is for on the secure lock screen. Off by default (build doc §11). */
+    var lockScreenText: Boolean
+
     /** Back to the defaults; part of "Delete everything" and the panic wipe. */
     fun reset() {
         calendarInPlans = false
         smartModel = true
+        historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
+        lockScreenText = false
     }
 }
 
@@ -116,6 +127,14 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var smartModel: Boolean
         get() = prefs.getBoolean("smart_model", true)
         set(value) = prefs.edit().putBoolean("smart_model", value).apply()
+    override var historyKeepDays: Int
+        get() = prefs.getInt("history_keep_days", com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS)
+            .takeIf { it in com.equisteg.mydaycompanion.domain.audit.HistoryRetention.CHOICES_DAYS }
+            ?: com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
+        set(value) = prefs.edit().putInt("history_keep_days", value).apply()
+    override var lockScreenText: Boolean
+        get() = prefs.getBoolean("lock_screen_text", false)
+        set(value) = prefs.edit().putBoolean("lock_screen_text", value).apply()
 }
 
 /**
@@ -134,7 +153,7 @@ class AppContainer(context: Context) : AppServices {
     private val events by lazy { RoomFixedEventRepository(db) }
     override val plans by lazy { RoomPlanRepository(db) }
     override val routines by lazy { RoomRoutineRepository(db) }
-    private val memories by lazy { RoomMemoryStore(db) }
+    override val memories by lazy { RoomMemoryStore(db) }
     override val audit by lazy { RoomAuditLog(db) }
     override val preferences by lazy { RoomPreferencesStore(db) }
     override val exportTargets by lazy { ContentResolverExportTargets(appContext.contentResolver) }
@@ -155,6 +174,10 @@ class AppContainer(context: Context) : AppServices {
             orchestrator, tasks, plans, routines, clock,
             remindersReady = { flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS) },
             afterRun = { scheduler.scheduleMaintenance() },
+            memories = memories,
+            proposeHabits = { flags.isEnabled(Flag.MEMORY) },
+            audit = audit,
+            historyKeepDays = { deviceSettings.historyKeepDays },
         )
     }
 
@@ -205,6 +228,13 @@ class AppContainer(context: Context) : AppServices {
                     DeleteAllDataTool(deletion),
                     UpdateSecuritySettingsTool(security),
                     SetChallengeQuestionsTool(security),
+                    com.equisteg.mydaycompanion.domain.tools.ProposeMemoryTool(memories, ids, clock),
+                    com.equisteg.mydaycompanion.domain.tools.AddMemoryTool(memories, ids, clock),
+                    com.equisteg.mydaycompanion.domain.tools.ActivateMemoryTool(memories, clock),
+                    com.equisteg.mydaycompanion.domain.tools.RejectMemoryTool(memories, clock),
+                    com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
+                    com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
+                    com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
                 ),
             ),
             policy = ToolAuthorizationPolicy(flags, permissionChecker),

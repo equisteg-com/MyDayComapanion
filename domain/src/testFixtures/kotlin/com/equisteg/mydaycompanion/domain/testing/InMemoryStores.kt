@@ -89,6 +89,12 @@ class InMemoryAuditLog : AuditLog {
     override suspend fun record(entry: AuditEntry) { entries += entry }
     override suspend fun recent(limit: Int) = entries.takeLast(limit).reversed()
     override suspend fun all() = entries.toList()
+    override suspend fun countBefore(instant: java.time.Instant) = entries.count { it.timestamp < instant }
+    override suspend fun deleteBefore(instant: java.time.Instant): Int {
+        val before = entries.size
+        entries.removeAll { it.timestamp < instant }
+        return before - entries.size
+    }
     override suspend fun deleteAll() = entries.clear()
     override suspend fun count() = entries.size
 }

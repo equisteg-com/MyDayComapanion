@@ -19,6 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.provider.Settings
 import android.content.pm.PackageManager
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +62,15 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         HorizontalDivider()
         SecuritySection(state, viewModel::onSecuritySettingsChange, viewModel::onSaveChallenges, viewModel::onRemoveChallenges)
+
+        HorizontalDivider()
+        LostPhoneSection(state, viewModel::onLockScreenText) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
+            } catch (e: ActivityNotFoundException) {
+                viewModel.onInfo("Open Android Settings → Security on this phone.")
+            }
+        }
 
         HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
@@ -123,7 +135,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 "Alarms, calls, messages, directions and calendar entries open the right app for you to finish; each needs your confirmation and screen lock. " +
                 "Notifications: asked once, for reminders and the morning brief. If you say no, everything else still works; " +
                 "you can allow them later in Android Settings > Apps > MyDayCompanion > Notifications. " +
-                "On the lock screen a reminder only says \"Reminder\", never what it is for. " +
+                "On a locked phone a reminder only says \"Reminder\", unless you choose to show the text (above). " +
                 "The app also starts briefly after the phone restarts, only to put your reminders back. " +
                 "It uses the system fingerprint, face or screen-lock prompt to confirm it's you; it never sees your fingerprint.",
         )
@@ -182,5 +194,38 @@ private fun SmartModelSection(state: UiState, onToggle: (Boolean) -> Unit, onDow
     if (state.smartModel && state.modelStatus == LocalModelStatus.DOWNLOADABLE) {
         state.modelDownload?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = onDownload, enabled = !state.busy, modifier = Modifier.testTag("model-download")) { Text("Download Gemini Nano") }
+    }
+}
+
+/**
+ * F14: what protects the owner if the phone is lost or stolen, and the two things to set up on the
+ * phone itself. Remote erase is Android's Find My Device; this app has no network access to do it.
+ */
+@Composable
+private fun LostPhoneSection(state: UiState, onLockScreenText: (Boolean) -> Unit, onOpenSecurity: () -> Unit) {
+    Text("If your phone is lost or stolen", style = MaterialTheme.typography.titleMedium)
+    Text(
+        "Your data is encrypted with a key that only this phone's secure hardware can unlock. With app lock on, " +
+            "someone holding your unlocked phone still needs your fingerprint, face or screen lock to open the agent, and " +
+            "a challenge answer to delete, export or change security. Wrong answers lock the agent, or wipe it if you turned that on.",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    Text(
+        "1. Turn on Find My Device (Android Settings → Google → Find My Device). From another device you can then lock or " +
+            "erase the phone at find.google.com, which erases this app too.\n" +
+            "2. Turn on Theft protection where your phone offers it (Android Settings → Google → All services → Theft protection).",
+        style = MaterialTheme.typography.bodySmall,
+    )
+    OutlinedButton(onClick = onOpenSecurity, modifier = Modifier.testTag("open-security-settings")) { Text("Open Android security settings") }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Show reminder text on the lock screen")
+            Text("Off: a locked phone only shows \"Reminder\". Personal tasks never show their title.", style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(
+            checked = state.lockScreenText,
+            onCheckedChange = onLockScreenText,
+            modifier = Modifier.testTag("lock-screen-text"),
+        )
     }
 }

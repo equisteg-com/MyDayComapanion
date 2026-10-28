@@ -6,6 +6,9 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,6 +31,7 @@ import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
+import com.equisteg.mydaycompanion.ui.screens.MemoryScreen
 import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import com.equisteg.mydaycompanion.ui.screens.PlanScreen
 import com.equisteg.mydaycompanion.ui.screens.RoutinesScreen
@@ -36,6 +40,7 @@ import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 enum class Destination(val label: String, val icon: ImageVector) {
     PLAN("My day", Icons.Filled.DateRange),
     ROUTINES("Routines", Icons.Filled.Refresh),
+    MEMORY("Memory", Icons.Filled.Star),
     HISTORY("History", Icons.Filled.Info),
     SETTINGS("Settings", Icons.Filled.Settings),
 }
@@ -66,8 +71,14 @@ fun AppNavigation(viewModel: MainViewModel) {
                         onClick = {
                             current = d
                             if (d == Destination.HISTORY) viewModel.refreshHistory()
+                            if (d == Destination.MEMORY) viewModel.refreshMemories()
                         },
-                        icon = { Icon(d.icon, contentDescription = null) },
+                        icon = {
+                            val waiting = if (d == Destination.MEMORY) state.proposedMemories.size else 0
+                            BadgedBox(badge = { if (waiting > 0) Badge(Modifier.testTag("memory-badge")) { Text("$waiting") } }) {
+                                Icon(d.icon, contentDescription = null)
+                            }
+                        },
                         label = { Text(d.label) },
                         modifier = Modifier.testTag("nav-${d.name}"),
                     )
@@ -79,7 +90,8 @@ fun AppNavigation(viewModel: MainViewModel) {
         when (current) {
             Destination.PLAN -> PlanScreen(viewModel, modifier)
             Destination.ROUTINES -> RoutinesScreen(viewModel, modifier)
-            Destination.HISTORY -> HistoryScreen(state.history, modifier)
+            Destination.MEMORY -> MemoryScreen(viewModel, modifier)
+            Destination.HISTORY -> HistoryScreen(state, viewModel::onHistoryFilter, viewModel::onHistoryKeepDays, modifier)
             Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
         }
     }

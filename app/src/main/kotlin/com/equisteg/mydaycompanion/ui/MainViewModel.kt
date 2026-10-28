@@ -12,6 +12,13 @@ import com.equisteg.mydaycompanion.domain.agent.AgentProposal
 import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
+import com.equisteg.mydaycompanion.domain.audit.HistoryFilter
+import com.equisteg.mydaycompanion.domain.audit.HistoryRetention
+import com.equisteg.mydaycompanion.domain.memory.MemoryItem
+import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
+import com.equisteg.mydaycompanion.domain.tools.AddMemoryTool
+import com.equisteg.mydaycompanion.domain.tools.OneMemoryTool
+import com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool
 import com.equisteg.mydaycompanion.domain.model.DayPlan
 import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
@@ -98,7 +105,17 @@ data class UiState(
     val modelStatus: LocalModelStatus? = null,
     /** Shown under the switch while the phone downloads the model. */
     val modelDownload: String? = null,
+    /** Proposed and kept memories, newest first; turned-down ones are not shown (F9). */
+    val memories: List<MemoryItem> = emptyList(),
+    val historyFilter: HistoryFilter = HistoryFilter.ALL,
+    val historyKeepDays: Int = HistoryRetention.DEFAULT_DAYS,
+    /** "Show reminder text on the lock screen" (off by default). */
+    val lockScreenText: Boolean = false,
 ) {
+    val proposedMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.PROPOSED }
+    val keptMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.ACTIVE }
+    val shownHistory: List<AuditEntry> get() = history.filter(historyFilter::matches)
+
     val showOnboarding: Boolean get() = preferencesLoaded && !preferences.onboardingDone
 }
 
@@ -117,6 +134,9 @@ class MainViewModel(
 
     /** The LOCAL_LLM flag hides the Gemini Nano settings as well as turning the model off. */
     val smartModelAllowed: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.LOCAL_LLM)
+
+    /** The MEMORY switch stops new memories; the owner can still see and delete what is stored. */
+    val memoryEnabled: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.MEMORY)
 
     /** The VOICE kill switch covers the microphone as well as spoken replies. */
     val voiceEnabled: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.VOICE)
@@ -148,13 +168,112 @@ class MainViewModel(
                     preferencesLoaded = true,
                     calendarInPlans = services.deviceSettings.calendarInPlans,
                     smartModel = services.deviceSettings.smartModel,
+                    historyKeepDays = services.deviceSettings.historyKeepDays,
+                    lockScreenText = services.deviceSettings.lockScreenText,
                 )
             }
             // ML Kit is not touched at all while the flag or the owner's switch is off.
             if (smartModelAllowed && services.deviceSettings.smartModel) refreshModelStatus()
             // Today's routine tasks and reminders; also re-run each night by the maintenance alarm.
             if (prefs.onboardingDone) services.maintenance.run()
+            loadMemories()
         }
+    }
+
+    fun refreshMemories() {
+        viewModelScope.launch { loadMemories() }
+    }
+
+    private suspend fun loadMemories() {
+        val items = services.memories.all().filter { it.status != MemoryStatus.REJECTED && it.deletedAt == null }.sortedByDescending { it.updatedAt }
+        _state.update { it.copy(memories = items) }
+    }
+
+    /** The owner typed something for the agent to remember. Private ones are never given to the model. */
+    fun onAddMemory(content: String, private: Boolean) = launchBusy {
+        val action = ProposedAction("memory.add", AddMemoryTool.args(content, private))
+        val r = services.orchestrator.execute(action, Requester.USER)
+        if (r is ExecutionResult.NeedsConfirmation) {
+            // Re-typing a private memory replaces it, so the owner's chosen verification comes first.
+            val s = _state.value
+            val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
+            advance(PendingConfirmation(action, r.actionFingerprint, "Replace a private memory?", "Your private memory with the same words is replaced by this one.", steps))
+            return@launchBusy
+        }
+        _state.update {
+            it.copy(
+                message = when (r) {
+                    is ExecutionResult.Done -> "Remembered."
+                    is ExecutionResult.Denied -> if (r.reason == "INVALID_ARGUMENTS") {
+                        "That can't be remembered. Keep it short, and leave out passwords, PINs, links and rules for the app."
+                    } else {
+                        describe(r)
+                    }
+                    else -> describe(r)
+                },
+            )
+        }
+        loadMemories()
+    }
+
+    /** "Keep" on a suggestion. The tap is the approval; a private memory also needs the owner's verification. */
+    fun onKeepMemory(memoryId: String) = launchBusy {
+        val action = ProposedAction("memory.activate", OneMemoryTool.args(memoryId))
+        when (val r = services.orchestrator.execute(action, Requester.USER)) {
+            is ExecutionResult.NeedsConfirmation -> {
+                val s = _state.value
+                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges) - ApprovalStep.TAP
+                advance(PendingConfirmation(action, r.actionFingerprint, "Keep this memory?", "", steps))
+            }
+            else -> {
+                _state.update { it.copy(message = describe(r)) }
+                loadMemories()
+            }
+        }
+    }
+
+    /** "No thanks" on a suggestion: it is not used and not suggested again. */
+    fun onRejectMemory(memoryId: String) = launchBusy {
+        val r = services.orchestrator.execute(ProposedAction("memory.reject", OneMemoryTool.args(memoryId)), Requester.USER)
+        if (r !is ExecutionResult.Done) _state.update { it.copy(message = describe(r)) }
+        loadMemories()
+    }
+
+    fun onDeleteMemory(memoryId: String) = launchBusy {
+        request(ProposedAction("memory.delete", OneMemoryTool.args(memoryId)), "Forget this?", "The agent stops using it, and it is deleted from this phone.")
+    }
+
+    fun onHistoryFilter(filter: HistoryFilter) = _state.update { it.copy(historyFilter = filter) }
+
+    /**
+     * How long History keeps entries. A longer period applies at once; a shorter one removes older
+     * entries now, which can't be undone, so the owner confirms it first when there are any.
+     */
+    fun onHistoryKeepDays(days: Int) = launchBusy {
+        if (days !in HistoryRetention.CHOICES_DAYS) return@launchBusy
+        val action = ProposedAction("history.prune", PruneHistoryTool.args(days))
+        val removing = services.audit.countBefore(PruneHistoryTool(services.audit, services.clock).cutoff(days))
+        if (removing == 0) {
+            applyHistoryKeepDays(days)
+            return@launchBusy
+        }
+        advance(
+            PendingConfirmation(
+                action, services.orchestrator.fingerprint(action), "Remove older history?",
+                "$removing ${if (removing == 1) "entry" else "entries"} older than $days days will be deleted. This can't be undone.",
+            ),
+        )
+    }
+
+    private fun applyHistoryKeepDays(days: Int) {
+        services.deviceSettings.historyKeepDays = days
+        _state.update { it.copy(historyKeepDays = days) }
+    }
+
+    /** Whether reminders show what they are for on the secure lock screen. */
+    fun onLockScreenText(show: Boolean) {
+        services.deviceSettings.lockScreenText = show
+        _state.update { it.copy(lockScreenText = show) }
     }
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, message = null) }
@@ -533,7 +652,11 @@ class MainViewModel(
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
-                _state.update { it.copy(message = describe(r)) }
+                if (pending.action.toolId.startsWith("memory.")) loadMemories()
+                if (r is ExecutionResult.Done && pending.action.toolId == "history.prune") {
+                    (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let(::applyHistoryKeepDays)
+                }
+                _state.update { it.copy(message = if (r is ExecutionResult.Done && pending.action.toolId == "memory.activate") "Kept. The agent will use it." else describe(r)) }
                 refreshHistory()
             }
         }
@@ -556,7 +679,7 @@ class MainViewModel(
 
     fun refreshHistory() {
         viewModelScope.launch {
-            val entries = services.audit.recent(100)
+            val entries = services.audit.recent(HISTORY_SHOWN)
             _state.update { it.copy(history = entries) }
         }
     }
@@ -640,6 +763,9 @@ class MainViewModel(
     }
 
     companion object {
+        /** Newest entries loaded for History; the filters apply to these. */
+        const val HISTORY_SHOWN = 300
+
         fun factory(services: AppServices) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T = MainViewModel(services) as T

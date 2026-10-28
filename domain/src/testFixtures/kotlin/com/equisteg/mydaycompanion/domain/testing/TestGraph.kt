@@ -133,6 +133,13 @@ class TestGraph(
             DeleteAllDataTool(deletion),
             UpdateSecuritySettingsTool(security),
             SetChallengeQuestionsTool(security),
+            com.equisteg.mydaycompanion.domain.tools.ProposeMemoryTool(memories, ids, clock),
+            com.equisteg.mydaycompanion.domain.tools.AddMemoryTool(memories, ids, clock),
+            com.equisteg.mydaycompanion.domain.tools.ActivateMemoryTool(memories, clock),
+            com.equisteg.mydaycompanion.domain.tools.RejectMemoryTool(memories, clock),
+            com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
+            com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
+            com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
         ),
     )
     val orchestrator = AgentOrchestrator(
