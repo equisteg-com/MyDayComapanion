@@ -40,8 +40,11 @@ class TodayWidgetProvider : AppWidgetProvider() {
                     if (wiping.get()) null else render(context, load((context.applicationContext as MyDayCompanionApp).services))
                 }.getOrNull()
                 // A read that overlapped "Delete everything" must not draw the old day back.
-                val views = if (loaded == null || wiping.get() || wipes.get() != started) render(context, null) else loaded
-                ids.forEach { manager.updateAppWidget(it, views) }
+                // The check and the draw share one lock with the wipe's clear(), so a clear is never overwritten.
+                synchronized(drawLock) {
+                    val views = if (loaded == null || wiping.get() || wipes.get() != started) render(context, null) else loaded
+                    ids.forEach { manager.updateAppWidget(it, views) }
+                }
             } finally {
                 pending.finish()
             }
@@ -52,6 +55,7 @@ class TodayWidgetProvider : AppWidgetProvider() {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val wiping = AtomicBoolean(false)
         private val wipes = AtomicInteger(0)
+        private val drawLock = Any()
         private val rows = listOf(
             R.id.widget_line_1 to R.id.widget_time_1,
             R.id.widget_line_2 to R.id.widget_time_2,
@@ -112,8 +116,10 @@ class TodayWidgetProvider : AppWidgetProvider() {
             try {
                 return wipe()
             } finally {
-                runCatching { clear(context) }
-                wiping.set(false)
+                synchronized(drawLock) {
+                    runCatching { clear(context) }
+                    wiping.set(false)
+                }
             }
         }
 
