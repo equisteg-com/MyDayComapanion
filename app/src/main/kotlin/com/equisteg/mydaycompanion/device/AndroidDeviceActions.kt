@@ -66,8 +66,12 @@ class AndroidDeviceActionLauncher(private val context: Context, private val zone
  */
 class AndroidSpeaker(context: Context) : Speaker {
     private val appContext = context.applicationContext
+    private var current: TextToSpeech? = null // only touched on the main thread
 
     override suspend fun speak(text: String): Boolean = withContext(Dispatchers.Main) {
+        // A new reply replaces one still being spoken, as QUEUE_FLUSH would on a shared engine.
+        current?.let { it.stop(); it.shutdown() }
+        current = null
         val ready = CompletableDeferred<Boolean>()
         val tts = TextToSpeech(appContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
         val ok = withTimeoutOrNull(3_000) { ready.await() } ?: false
@@ -83,6 +87,7 @@ class AndroidSpeaker(context: Context) : Speaker {
                 override fun onError(utteranceId: String?) = tts.shutdown()
             },
         )
+        current = tts
         tts.language = Locale.getDefault()
         val queued = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mdc-speak") == TextToSpeech.SUCCESS
         if (!queued) tts.shutdown()

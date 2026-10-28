@@ -25,6 +25,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowSpeechRecognizer
 import java.time.LocalDate
 import java.time.LocalTime
 import kotlin.test.assertEquals
@@ -74,6 +75,7 @@ class DeviceActionsUiTest {
 
     @Test
     fun `without an on-device recogniser the mic is off, never a cloud fallback`() {
+        ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(false)
         compose.setContent { AppNavigation(viewModel) }
         compose.onNodeWithTag("voice").performScrollTo().assertIsNotEnabled().assertTextContains("Needs on-device voice", substring = true)
     }
@@ -83,6 +85,7 @@ class DeviceActionsUiTest {
         val off = MainViewModel(TestServices(graph, flags = FeatureFlags(mapOf(Flag.VOICE to false))), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(off) }
         compose.waitForIdle()
+        assertTrue(compose.onAllNodes(hasTestTag("submit")).fetchSemanticsNodes().isNotEmpty(), "My day is shown")
         assertTrue(compose.onAllNodes(hasTestTag("voice")).fetchSemanticsNodes().isEmpty(), "no mic when voice is switched off")
     }
 
