@@ -11,7 +11,7 @@
 | RP-07 | Rollback plan | PASS | Halt staged rollout; fix forward with a higher `versionCode` (Play cannot downgrade). DB migrations must be additive so a fix-forward build can open any newer schema. |
 | RP-08 | Crash monitoring | PASS | Play Console Android vitals (no SDK). A local error log the user can choose to include in an export is planned for Phase 1. |
 | RP-09 | Release notes | PASS (plan) | Root `CHANGELOG.md` (template format) per tag; Play "What's new" from it. |
-| RP-10 | Privacy documentation | NEEDS DECISION (blocks alpha, not Phase 0) | Play needs a public privacy-policy URL and Data safety form. Proposed: a page on the existing EQUISTeG site. Data safety answers: no data collected or shared; data encrypted on device; user can delete. (OQ-06) |
+| RP-10 | Privacy documentation | NEEDS DECISION (blocks alpha, not Phase 0) | Play needs a public privacy-policy URL and Data safety form. Proposed: a page on the existing EQUISTeG site. Data safety answers: no data collected or shared; data encrypted on device; user can delete (OQ-06). Since Gemini Nano (D-03), confirm these against Google's ML Kit and AICore data disclosures before submitting (OQ-20). |
 | RP-11 | Terms requirements | PASS (plan) | Simple terms page alongside the privacy policy before beta. |
 | RP-12 | User support process | PASS (plan) | One support email; alpha via a shared chat group; triage by frequency/severity/evidence. |
 | RP-13 | Store compliance checklist | PASS (plan) | Target API level current (36), Data safety, content rating, permissions declarations (none in Phase 0), no misleading claims ("100% secure" is banned wording). |

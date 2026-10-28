@@ -9,7 +9,7 @@ data class PromptTemplate(val id: String, val version: Int, val instructions: St
 object PromptRegistry {
     val TASK_EXTRACTION = PromptTemplate(
         id = "task-extraction",
-        version = 2,
+        version = 3,
         instructions = """
             Extract the user's tasks and fixed events. One message may cover several days.
             Times and dates can appear anywhere and in any format (5pm, 17:30, half past 7, 3-4pm,
@@ -23,7 +23,10 @@ object PromptRegistry {
                        "remindAt":"HH:mm"|null}],
              "fixedEvents":[{"title":string,"date":"YYYY-MM-DD"|null,"start":"HH:mm","durationMinutes":int}],
              "warnings":[string]}
-            A null date means targetDate.
+            A null date means targetDate. Use null for anything the user didn't say; never invent
+            dates, times or tasks. Titles are short, in the user's words, starting with a capital
+            letter, without the time or day (for "call Raj at 4pm" the title is "Call Raj").
+            A thing with a start time and nothing to do (meeting, dentist, standup) is a fixed event.
         """.trimIndent(),
     )
 }

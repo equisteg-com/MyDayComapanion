@@ -26,6 +26,7 @@ class ManifestSecurityTest {
         "android.permission.RECORD_AUDIO",
         "android.permission.READ_CALENDAR",
         "com.android.alarm.permission.SET_ALARM",
+        "com.google.android.apps.aicore.service.BIND_SERVICE",
     )
 
     @Test

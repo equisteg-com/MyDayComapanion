@@ -48,7 +48,11 @@ internal class TestServices(
     override val challenges = ChallengeVerifier(graph.security, graph.clock::instant)
     override val preferences = graph.preferences
     override val routines = graph.routines
-    override val deviceSettings = object : DeviceSettings { override var calendarInPlans = false }
+    override val deviceSettings = object : DeviceSettings {
+        override var calendarInPlans = false
+        override var smartModel = true
+    }
+    override var localModel: com.equisteg.mydaycompanion.domain.ai.LocalModelControl = com.equisteg.mydaycompanion.domain.ai.NoLocalModel
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false
 
