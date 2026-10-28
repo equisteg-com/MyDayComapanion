@@ -179,4 +179,22 @@ class RoomStorageTest {
         }
         assertEquals(MdcDatabase.VERSION, v)
     }
+
+    @Test
+    fun `a restore that fails part-way leaves every table as it was`() = runTest {
+        seed()
+        val tasks = RoomTaskRepository(db)
+        val audit = RoomAuditLog(db)
+        val result = runCatching {
+            com.equisteg.mydaycompanion.data.repository.RoomStoreTransactions(db).atomically {
+                tasks.deleteAll()
+                audit.deleteAll()
+                tasks.upsert(listOf(Task("n1", "From the backup", createdAt = now)))
+                error("disk full")
+            }
+        }
+        assertTrue(result.isFailure)
+        assertEquals(setOf("t1", "t2"), tasks.all().map { it.id }.toSet())
+        assertEquals(1, audit.count())
+    }
 }

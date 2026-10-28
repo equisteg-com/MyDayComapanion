@@ -102,6 +102,7 @@ fun OnboardingScreen(
     onFinish: (UserPreferences) -> Unit,
     onSetUpQuestions: (List<Pair<String, String>>) -> Unit,
     modifier: Modifier = Modifier,
+    onRestoreFromBackup: () -> Unit = {},
 ) {
     var step by rememberSaveable { mutableIntStateOf(0) }
     var dayStart by rememberSaveable { mutableIntStateOf(state.preferences.dayStart.hour) }
@@ -132,6 +133,10 @@ fun OnboardingScreen(
                     "Everything stays on this phone in an encrypted database. No account, no internet, no analytics.",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                OutlinedButton(onClick = onRestoreFromBackup, enabled = !state.busy, modifier = Modifier.testTag("onboarding-restore")) {
+                    Text("Restore from backup")
+                }
+                Text("Moving from another phone? Pick the backup file you made there.", style = MaterialTheme.typography.bodySmall)
             }
             1 -> {
                 Text("Your day", style = MaterialTheme.typography.headlineSmall)

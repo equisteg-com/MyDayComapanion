@@ -1,5 +1,21 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 6b: encrypted backup and restore
+
+- Settings → Your data → Back up: the owner picks where to save `mydaycompanion-YYYYMMDD.mdcbackup`, chooses a
+  passphrase (at least 10 characters, typed twice, with a strength label and a "no recovery" warning), then confirms
+  with the screen lock. The file is encrypted with AES-256-GCM using a key from PBKDF2-HMAC-SHA256 (600,000
+  iterations, random salt); the header is authenticated, so any changed byte makes it fail to open. The app opens
+  the file once before saving it, so a backup that couldn't be restored is never written.
+- Restore (Settings, or "Restore from backup" on the first setup screen of a new phone): the file is read (20 MB
+  cap), decrypted, and every item checked like any untrusted input (unknown fields, rule-like titles or memories,
+  bad settings and broken references refuse the whole backup). The owner then sees what the backup holds and
+  approves replacing everything (L4: Confirm, screen lock, and a challenge answer when set up). Reminders and
+  routines are registered again afterwards. Ten wrong passphrases close Restore for an hour.
+- The passphrase and the decrypted backup never go into tool arguments, the approval fingerprint or History: they
+  wait in memory for at most 10 minutes under a random one-time token, and are cleared when the owner cancels.
+- No new permission or dependency (JDK crypto, Storage Access Framework), and no database change.
+
 ## 2026-10-28 — Agent OS part 6a: memory, history, lost phone
 
 - Memory (F9): a new Memory tab. Each night the agent looks at finished tasks; a task finished on 3 different days

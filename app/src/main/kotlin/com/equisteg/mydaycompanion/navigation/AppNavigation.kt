@@ -9,6 +9,8 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -28,6 +30,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.security.ApprovalStep
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import com.equisteg.mydaycompanion.ui.UiState
+import com.equisteg.mydaycompanion.ui.screens.BackupPassphraseDialog
 import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
@@ -57,7 +60,12 @@ fun AppNavigation(viewModel: MainViewModel) {
     }
 
     if (state.showOnboarding) {
-        Scaffold { padding -> OnboardingScreen(state, viewModel::onFinishOnboarding, viewModel::onSaveChallenges, Modifier.padding(padding)) }
+        val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            if (uri != null) viewModel.onRestoreFileChosen(uri)
+        }
+        Scaffold { padding ->
+            OnboardingScreen(state, viewModel::onFinishOnboarding, viewModel::onSaveChallenges, Modifier.padding(padding)) { restoreLauncher.launch(arrayOf("*/*")) }
+        }
         ApprovalDialogs(viewModel, state)
         return
     }
@@ -102,6 +110,9 @@ fun AppNavigation(viewModel: MainViewModel) {
 /** The challenge question and the Confirm step of a pending approval, shown over any screen. */
 @Composable
 private fun ApprovalDialogs(viewModel: MainViewModel, state: UiState) {
+    state.backupPrompt?.let {
+        BackupPassphraseDialog(it, state.busy, viewModel::onBackupPassphrase, viewModel::onRestorePassphrase, viewModel::onCancelBackupPrompt)
+    }
     state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
 
     state.pending?.takeIf { it.steps.firstOrNull() == ApprovalStep.TAP }?.let { pending ->

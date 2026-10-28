@@ -28,6 +28,8 @@
 | memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User (Memory screen) or assistant proposal (habits noticed from finished, non-personal tasks) | Per item: suggestions 365 d; a turned-down suggestion keeps only a one-way hash of its text, 365 d; kept and owner-written memories until deleted; expired items removed nightly (`memory.purgeExpired`) | Yes | Yes (Memory screen, one at a time; Delete everything) |
 | audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days by default; owner chooses 30 / 90 / 180 / 365 on History; removed nightly (`history.prune`) | Yes | Yes |
 | preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
+| Backup file (`.mdcbackup`, outside the app) | everything in the rows above, plus security settings and challenge-question hashes; not the database key | Personal / Sensitive | Owner (Settings → Back up) | Where the owner saved it (Storage Access Framework); the app keeps no copy | — | Owner deletes the file |
+| device_settings (SharedPreferences) | calendar, Gemini Nano and lock-screen switches, History retention, wrong-backup-passphrase count and lock time | Low | User / app | Life of install; the restore lock survives "Delete everything" | No | Uninstall |
 | db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |
 | Keystore key | AES-256 wrapping key | Secret | AndroidKeyStore | Life of install | Never extractable | Removed on uninstall |
 
@@ -38,7 +40,11 @@ Voice audio (Phase 1) is never stored; only the recognised text enters the pipel
 1. Free text → extractor/model: may contain anything (health, finance). Stays in memory, normalised, never logged.
 2. Memories: assistant cannot store SENSITIVE items; sensitive memories are excluded from model context.
 3. Export file: plaintext JSON in a location the user chooses. The confirmation dialog says so.
-4. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
+4. Backup file: AES-256-GCM, key from the owner's passphrase (PBKDF2-HMAC-SHA256, 600,000 iterations, 16-byte salt);
+   the header is authenticated. A backup is untrusted input when restored: files over 20 MB, unknown fields, unknown
+   versions, weaker key settings, rule-like titles or memories and broken references are refused whole. Ten wrong
+   passphrases close Restore for an hour. There is no recovery without the passphrase.
+5. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
 
 ## Network
 
