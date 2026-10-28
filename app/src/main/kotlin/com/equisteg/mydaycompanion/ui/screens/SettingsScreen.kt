@@ -152,13 +152,13 @@ private fun SmartModelSection(state: UiState, onToggle: (Boolean) -> Unit, onDow
         Column(Modifier.weight(1f)) {
             Text("Use Gemini Nano on this phone")
             Text(
-                "Understands looser wording and more kinds of dates. It runs on the phone; your words are never sent online. " +
+                "Understands looser wording and more kinds of dates. The model runs on this phone in Android's AICore service, and this app has no internet access. " +
                     "Its answers are checked like everything else, and you still approve each plan.",
                 style = MaterialTheme.typography.bodySmall,
             )
         }
         Switch(
-            checked = state.smartModel,
+            checked = state.smartModel && state.modelStatus != LocalModelStatus.UNAVAILABLE,
             onCheckedChange = onToggle,
             enabled = !state.busy && state.modelStatus != null && state.modelStatus != LocalModelStatus.UNAVAILABLE,
             modifier = Modifier.testTag("smart-toggle"),

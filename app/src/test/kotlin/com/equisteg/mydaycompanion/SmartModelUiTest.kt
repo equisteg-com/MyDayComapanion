@@ -72,11 +72,11 @@ class SmartModelUiTest {
     }
 
     @Test
-    fun `unsupported phones say so and can't switch it on; the flag hides the section`() {
+    fun `unsupported phones say so and can't switch it on`() {
         val (vm, _) = viewModel(FakeModel(LocalModelStatus.UNAVAILABLE))
         compose.setContent { SettingsScreen(vm) }
         compose.waitUntil(5_000) { vm.state.value.modelStatus == LocalModelStatus.UNAVAILABLE }
-        compose.onNodeWithTag("smart-toggle").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("smart-toggle").performScrollTo().assertIsNotEnabled().assertIsOff()
         compose.onNodeWithTag("model-status").assertTextContains("doesn't support", substring = true)
     }
 

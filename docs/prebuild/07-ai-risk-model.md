@@ -4,7 +4,7 @@
 |---|---|---|---|
 | AI-01 | Model/provider abstraction | PASS | `AiModelProvider` (capabilities, estimateCost, generate, availability, structured/streaming support). |
 | AI-02 | Supported model classes documented | PASS | DETERMINISTIC, SMALL_LOCAL, LARGE_LOCAL, CLOUD (CLOUD blocked by `PrivacyMode.ON_DEVICE_ONLY`). |
-| AI-03 | Local model strategy | PASS (Phase 0) / NEEDS DECISION (Phase 1) | Phase 0 ships the deterministic `RuleBasedTaskExtractor` only. A real on-device LLM needs a decision (OQ-04): candidates are Gemini Nano via Android AICore (device-limited, Google terms) or an open-weight small model via MediaPipe/LiteRT (weights licence + 0.5–2 GB download, which needs a network path or a large APK). |
+| AI-03 | Local model strategy | DECIDED (D-03, 2026-10-28) | Gemini Nano through ML Kit's Prompt API on supported phones (`OnDeviceLlmProvider`), with the deterministic `RuleBasedTaskExtractor` as the fallback everywhere else and for any invalid, slow or failed answer. Earlier note: A real on-device LLM needs a decision (OQ-04): candidates are Gemini Nano via Android AICore (device-limited, Google terms) or an open-weight small model via MediaPipe/LiteRT (weights licence + 0.5–2 GB download, which needs a network path or a large APK). |
 | AI-04 | Device capability detection | PASS | `AndroidDeviceStateProvider` (battery, charging, idle, thermal, RAM, power-save). |
 | AI-05 | Energy policy | PASS | `EnergyPolicy`: ≤15% battery or severe thermal → rules only; ≤40%/power-save/low RAM/elevated thermal → small models only; charging+idle → maintenance allowed. Event-driven, no background AI. |
 | AI-06 | Prompt versioning | PASS | `PromptRegistry` (id + version); audit records provider id. |

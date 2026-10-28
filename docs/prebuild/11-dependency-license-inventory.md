@@ -7,7 +7,7 @@ and makes no network calls (the app has no INTERNET permission regardless).
 |---|---|---|---|
 | DL-01 | Inventory complete | PASS | Tables below match the version catalog. |
 | DL-02 | Licences acceptable | PASS (one founder-approved exception) | Apache-2.0, BSD-style, MIT; EPL-1.0/2.0 only in test scope. Exception: ML Kit GenAI Prompt API under the ML Kit Terms of Service (Google APIs Terms), accepted by the founder on 2026-10-28 for Gemini Nano (D-03). |
-| DL-03 | No paid / telemetry / network SDKs | PASS with note | No paid SDK. ML Kit may include Google's usage-logging components; the APK has no INTERNET or ACCESS_NETWORK_STATE permission (checked in CI), so nothing can be sent from the app. The model itself is run and downloaded by Android's AICore system service. |
+| DL-03 | No paid / telemetry / network SDKs | PASS with note | No paid SDK. ML Kit brings Google's usage-logging library (`com.google.android.datatransport` transport-runtime and transport-backend-cct, plus firebase-encoders and play-services-basement/base/tasks), confirmed in the CI dependency tree on 2026-10-28. Its INTERNET and ACCESS_NETWORK_STATE requests are removed by the app manifest and the APK is checked in CI, so the app cannot send anything. Whether its upload scheduling fails quietly without ACCESS_NETWORK_STATE on Android 14+ is OQ-20. The model itself is run and downloaded by Android's AICore system service. |
 | DL-04 | Transitive review | PASS (CI) | `dependency-scan` job writes `app/gradle.lockfile` for the release runtime classpath and runs OSV-Scanner. |
 
 ## Shipped in the app

@@ -11,8 +11,8 @@
 - Settings → Smarter understanding: on/off switch (on by default), the phone's status, and a Download button that
   asks AICore to fetch the model. The app still has no INTERNET permission. "Delete everything" resets the switch.
 - The model is used down to 15% battery (it is classed as a small local model) and never in severe heat.
-- NEEDS HUMAN: run the golden phrases on a phone that Google lists as supporting Gemini Nano and compare with
-  the rules; CI cannot run the model.
+- NEEDS HUMAN (OQ-20): run the golden phrases on a phone that Google lists as supporting Gemini Nano, check that
+  ML Kit's bundled usage-logging library stays quiet without network permissions, and confirm the Data safety answers.
 
 ## 2026-10-28 — Agent OS part 5: voice, calendar, device actions
 

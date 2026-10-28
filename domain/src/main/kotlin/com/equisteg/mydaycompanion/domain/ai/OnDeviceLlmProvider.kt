@@ -52,6 +52,9 @@ object PromptRenderer {
     const val OPEN = "<user_text>"
     const val CLOSE = "</user_text>"
     private val marker = Regex("</?\\s*user_text\\s*>?", RegexOption.IGNORE_CASE)
+    // Angle brackets (and their full-width forms) can't appear in the owner's text at all, so no
+    // spelling of the closing marker survives; task titles never need them.
+    private val brackets = Regex("[<>\uFF1C\uFF1E\u2039\u203A]")
 
     fun render(request: AiRequest): String = buildString {
         appendLine(request.instructions)
@@ -72,7 +75,7 @@ object PromptRenderer {
         append("Reply with the JSON object only.")
     }
 
-    private fun fence(text: String) = text.replace(marker, " ")
+    private fun fence(text: String) = text.replace(marker, " ").replace(brackets, " ")
 }
 
 /**
