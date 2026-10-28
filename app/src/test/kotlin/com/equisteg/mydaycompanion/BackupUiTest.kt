@@ -273,7 +273,11 @@ class BackupUiTest {
                     com.equisteg.mydaycompanion.domain.audit.AuditOutcome.SUCCESS,
                 ),
             )
-            old.plans.save(com.equisteg.mydaycompanion.domain.model.DayPlan(tomorrow, emptyList(), emptyList(), emptyList(), "old"))
+            // A plan needs at least one block to travel in a backup; an empty one is simply planned again.
+            val block = com.equisteg.mydaycompanion.domain.model.PlanBlock(
+                "t2", "Buy milk", com.equisteg.mydaycompanion.domain.model.BlockKind.TASK, java.time.LocalTime.of(9, 0), java.time.LocalTime.of(9, 30),
+            )
+            old.plans.save(com.equisteg.mydaycompanion.domain.model.DayPlan(tomorrow, listOf(block), emptyList(), emptyList(), "old"))
         }
         val services = TestServices(graph).apply { backupFile = backup }
         val vm = MainViewModel(services, Dispatchers.Unconfined)
