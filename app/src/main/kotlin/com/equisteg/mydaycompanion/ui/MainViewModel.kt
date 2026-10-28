@@ -61,6 +61,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Duration
 import java.time.Instant
+import com.equisteg.mydaycompanion.ui.theme.ThemeMode
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
@@ -125,6 +126,9 @@ data class UiState(
     val backupPrompt: BackupPrompt? = null,
     /** "Show names on the home-screen widget" (off by default). */
     val widgetTitles: Boolean = false,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** Wallpaper colours (Material You), Android 12 and later. */
+    val dynamicColor: Boolean = false,
 ) {
     val proposedMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.PROPOSED }
     val keptMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.ACTIVE }
@@ -143,7 +147,15 @@ class MainViewModel(
     private val background: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     // Starts locked so nothing shows before the security settings are read; unlocks at once when the app lock is off.
-    private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
+    // The look is read at once, so the first frame is already in the owner's theme.
+    private val _state = MutableStateFlow(
+        UiState(
+            selectedDate = LocalDate.now(services.clock),
+            locked = true,
+            themeMode = ThemeMode.of(services.deviceSettings.themeMode),
+            dynamicColor = services.deviceSettings.dynamicColor,
+        ),
+    )
     val state: StateFlow<UiState> = _state.asStateFlow()
 
     /** The LOCAL_LLM flag hides the Gemini Nano settings as well as turning the model off. */
@@ -300,6 +312,16 @@ class MainViewModel(
         services.deviceSettings.widgetTitles = show
         _state.update { it.copy(widgetTitles = show) }
         services.refreshWidget()
+    }
+
+    fun onThemeMode(mode: ThemeMode) {
+        services.deviceSettings.themeMode = mode.name
+        _state.update { it.copy(themeMode = mode) }
+    }
+
+    fun onDynamicColor(on: Boolean) {
+        services.deviceSettings.dynamicColor = on
+        _state.update { it.copy(dynamicColor = on) }
     }
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, message = null) }
@@ -484,6 +506,10 @@ class MainViewModel(
     fun onFinishOnboarding(preferences: UserPreferences) = onPreferencesChange(preferences.copy(onboardingDone = true))
 
     fun onReplan() = launchBusy { replan() }
+
+    /** The phone's date and time, from the same clock the planner uses (tests fix it). */
+    fun today(): LocalDate = LocalDate.now(services.clock)
+    fun nowTime(): LocalTime = LocalTime.now(services.clock).truncatedTo(ChronoUnit.MINUTES)
 
     fun selectDate(date: LocalDate) {
         selectedDate.value = date

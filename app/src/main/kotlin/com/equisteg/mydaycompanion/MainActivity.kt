@@ -19,7 +19,9 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.equisteg.mydaycompanion.navigation.AppNavigation
@@ -76,7 +78,8 @@ class MainActivity : FragmentActivity() {
         }
 
         setContent {
-            MyDayCompanionTheme {
+            val state by viewModel.state.collectAsStateWithLifecycle()
+            MyDayCompanionTheme(state.themeMode, state.dynamicColor) {
                 AppNavigation(viewModel)
             }
         }

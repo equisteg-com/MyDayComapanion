@@ -11,6 +11,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -19,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import android.Manifest
+import android.os.Build
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
@@ -34,6 +36,7 @@ import com.equisteg.mydaycompanion.domain.config.Flag
 import com.equisteg.mydaycompanion.domain.ai.LocalModelStatus
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import com.equisteg.mydaycompanion.ui.UiState
+import com.equisteg.mydaycompanion.ui.theme.ThemeMode
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
@@ -80,6 +83,9 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         HorizontalDivider()
         WidgetSection(state, viewModel::onWidgetTitles)
+
+        HorizontalDivider()
+        AppearanceSection(state, viewModel::onThemeMode, viewModel::onDynamicColor)
 
         HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
@@ -258,5 +264,30 @@ private fun WidgetSection(state: UiState, onWidgetTitles: (Boolean) -> Unit) {
             onCheckedChange = onWidgetTitles,
             modifier = Modifier.testTag("widget-titles"),
         )
+    }
+}
+
+/** UPD-010: light, dark or match the phone; wallpaper colours where Android offers them (12 and later). */
+@Composable
+private fun AppearanceSection(state: UiState, onThemeMode: (ThemeMode) -> Unit, onDynamicColor: (Boolean) -> Unit) {
+    Text("Appearance", style = MaterialTheme.typography.titleMedium)
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ThemeMode.entries.forEach { mode ->
+            FilterChip(
+                selected = state.themeMode == mode,
+                onClick = { onThemeMode(mode) },
+                label = { Text(mode.label) },
+                modifier = Modifier.testTag("theme-${mode.name}"),
+            )
+        }
+    }
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Use wallpaper colours")
+                Text("Matches the app's colours to your wallpaper.", style = MaterialTheme.typography.bodySmall)
+            }
+            Switch(checked = state.dynamicColor, onCheckedChange = onDynamicColor, modifier = Modifier.testTag("dynamic-color"))
+        }
     }
 }

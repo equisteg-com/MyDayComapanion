@@ -1,5 +1,18 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 7a: new look
+
+- A new palette ("calm dawn": deep teal for tasks, apricot for fixed events, violet for the agent), rounder shapes
+  and stronger headings. Settings → Appearance: Match phone / Light / Dark, and "Use wallpaper colours" on
+  Android 12+. The look is read before the first frame, so there is no flash.
+- My day: a greeting and date with ‹ › and a Today chip; the input in its own card with the agent's reply as a
+  bubble; a top card with a progress ring ("2 of 5 done") and, for today, Now / Next; the plan as a colour-coded
+  timeline where the block running now is marked and done tasks fade and strike through; "Your week" with seven
+  bars, the streak and minutes finished today. Insights are worked out on the phone from the task list; nothing
+  new is stored.
+- Motion: the proposal card slides in and out, the ring and bars animate, tabs cross-fade.
+- No new dependency or permission; no database change (two new device settings: theme and wallpaper colours).
+
 ## 2026-10-28 — Agent OS part 6c: home-screen widget
 
 - A MyDayCompanion widget for the home screen (F19): a headline ("3 left today · next at 14:00") and up to three

@@ -122,6 +122,10 @@ interface DeviceSettings {
     /** Show task and event names on the home-screen widget (F19). Off by default: the widget is outside the app lock. */
     var widgetTitles: Boolean
 
+    /** Light, dark or match the phone ([com.equisteg.mydaycompanion.ui.theme.ThemeMode] name), and wallpaper colours on Android 12+. */
+    var themeMode: String
+    var dynamicColor: Boolean
+
     /**
      * Wrong backup passphrases in a row, and until when Restore stays closed after ten of them
      * (build doc §7.3). Not part of [reset]: wiping the phone doesn't reopen guessing.
@@ -136,6 +140,8 @@ interface DeviceSettings {
         historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         lockScreenText = false
         widgetTitles = false
+        themeMode = com.equisteg.mydaycompanion.ui.theme.ThemeMode.SYSTEM.name
+        dynamicColor = false
     }
 }
 
@@ -158,6 +164,12 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var widgetTitles: Boolean
         get() = prefs.getBoolean("widget_titles", false)
         set(value) = prefs.edit().putBoolean("widget_titles", value).apply()
+    override var themeMode: String
+        get() = prefs.getString("theme_mode", null) ?: com.equisteg.mydaycompanion.ui.theme.ThemeMode.SYSTEM.name
+        set(value) = prefs.edit().putString("theme_mode", value).apply()
+    override var dynamicColor: Boolean
+        get() = prefs.getBoolean("dynamic_color", false)
+        set(value) = prefs.edit().putBoolean("dynamic_color", value).apply()
     override var restoreFailures: Int
         get() = prefs.getInt("restore_failures", 0)
         set(value) { prefs.edit().putInt("restore_failures", value).commit() }
