@@ -17,6 +17,7 @@ import com.equisteg.mydaycompanion.domain.audit.AuditOutcome
 import com.equisteg.mydaycompanion.domain.memory.MemoryStore
 import com.equisteg.mydaycompanion.domain.model.DayPlan
 import com.equisteg.mydaycompanion.domain.model.FixedEvent
+import com.equisteg.mydaycompanion.domain.model.RoutineFrequency
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.planner.PlanRequest
 import com.equisteg.mydaycompanion.domain.planner.PlanValidator
@@ -128,9 +129,11 @@ class AgentOrchestrator(
             val dayTasks = extraction.tasks.filter { it.date == date }
             val dayEvents = extraction.fixedEvents.filter { it.date == date }
             listOf(ProposedAction("tasks.create", createArgs(date, dayTasks, dayEvents)), ProposedAction("plan.generate", planArgs(date)))
+        } + extraction.tasks.filter { it.repeat != null }.distinctBy { it.title.lowercase() }.map {
+            ProposedAction("routines.create", routineArgs(it))
         }
-        val warnings = extraction.warnings + extraction.tasks.filter { it.repeat != null }.map {
-            "\"${it.title}\" repeats (${it.repeat!!.name.lowercase()}). I'll add the first one now; repeating items are switched on with routines."
+        val warnings = extraction.warnings + extraction.tasks.filter { it.repeat != null }.distinctBy { it.title.lowercase() }.map {
+            "\"${it.title}\" repeats (${it.repeat!!.name.lowercase()}). Approving also saves it as a routine, so it is added on every day it is due."
         }
         record(
             AuditActor.AGENT, "ai.extract", null, AuditDecision.NOT_APPLICABLE, AuditOutcome.SUCCESS, null,
@@ -157,6 +160,7 @@ class AgentOrchestrator(
                             put("durationMinutes", JsonPrimitive(it.durationMinutes))
                             put("deadline", it.deadline?.let { d -> JsonPrimitive(d.toString()) } ?: JsonNull)
                             it.preferredStart?.let { p -> put("preferredStart", JsonPrimitive(p.toString())) }
+                            it.remindAt?.let { r -> put("remindAt", JsonPrimitive(r.toString())) }
                         },
                     )
                 },
@@ -173,6 +177,16 @@ class AgentOrchestrator(
                 },
             ),
         ),
+    )
+
+    private fun routineArgs(t: ExtractedTask) = JsonObject(
+        buildMap {
+            put("title", JsonPrimitive(t.title))
+            put("frequency", JsonPrimitive(t.repeat!!.name))
+            put("durationMinutes", JsonPrimitive(t.durationMinutes))
+            t.preferredStart?.let { put("preferredStart", JsonPrimitive(it.toString())) }
+            if (t.repeat == RoutineFrequency.WEEKLY) put("dayOfWeek", JsonPrimitive(t.date.dayOfWeek.name))
+        },
     )
 
     private fun planArgs(date: LocalDate) = JsonObject(

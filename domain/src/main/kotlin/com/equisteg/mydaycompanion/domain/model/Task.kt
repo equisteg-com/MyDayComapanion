@@ -1,6 +1,7 @@
 package com.equisteg.mydaycompanion.domain.model
 
 import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -32,6 +33,10 @@ data class Task(
     val notes: String? = null,
     /** Personal items need the owner's device credential or a challenge answer for every change (build doc §6.1). */
     val personal: Boolean = false,
+    /** Set when this task was generated from a routine for [date]; used so a routine is added once per day. */
+    val routineId: String? = null,
+    /** An explicit reminder time the owner asked for ("remind me at 5"); otherwise the lead time before the planned start applies. */
+    val remindAt: LocalTime? = null,
 ) {
     companion object {
         const val MAX_NOTES_LENGTH = 2_000
@@ -59,7 +64,10 @@ enum class EventSource { USER, CALENDAR }
 
 enum class RoutineFrequency { DAILY, WEEKDAYS, WEEKLY }
 
-/** A recurring commitment (e.g. "work out every weekday"). Basic routines arrive in Phase 1. */
+/**
+ * A recurring commitment (e.g. "gym every weekday at 6am"). Each day it is due, one task is
+ * generated for it (see RoutineExpander). [dayOfWeek] is used only by WEEKLY routines.
+ */
 data class Routine(
     val id: String,
     val title: String,
@@ -68,7 +76,19 @@ data class Routine(
     val durationMinutes: Int,
     val enabled: Boolean = true,
     val createdAt: Instant,
-)
+    val dayOfWeek: DayOfWeek? = null,
+    val remind: Boolean = true,
+) {
+    fun isDueOn(date: LocalDate): Boolean = enabled && when (frequency) {
+        RoutineFrequency.DAILY -> true
+        RoutineFrequency.WEEKDAYS -> date.dayOfWeek != DayOfWeek.SATURDAY && date.dayOfWeek != DayOfWeek.SUNDAY
+        RoutineFrequency.WEEKLY -> date.dayOfWeek == dayOfWeek
+    }
+
+    companion object {
+        const val MAX_ROUTINES = 50
+    }
+}
 
 data class UserPreferences(
     val dayStart: LocalTime = LocalTime.of(9, 0),

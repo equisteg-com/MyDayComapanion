@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
@@ -29,10 +30,12 @@ import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
 import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import com.equisteg.mydaycompanion.ui.screens.PlanScreen
+import com.equisteg.mydaycompanion.ui.screens.RoutinesScreen
 import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 
 enum class Destination(val label: String, val icon: ImageVector) {
     PLAN("My day", Icons.Filled.DateRange),
+    ROUTINES("Routines", Icons.Filled.Refresh),
     HISTORY("History", Icons.Filled.Info),
     SETTINGS("Settings", Icons.Filled.Settings),
 }
@@ -75,6 +78,7 @@ fun AppNavigation(viewModel: MainViewModel) {
         val modifier = Modifier.padding(padding)
         when (current) {
             Destination.PLAN -> PlanScreen(viewModel, modifier)
+            Destination.ROUTINES -> RoutinesScreen(viewModel, modifier)
             Destination.HISTORY -> HistoryScreen(state.history, modifier)
             Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
         }

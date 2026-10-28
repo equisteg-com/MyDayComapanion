@@ -51,6 +51,7 @@ import com.equisteg.mydaycompanion.domain.security.SecurityStore
 import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -122,14 +123,23 @@ class RoomPlanRepository(db: MdcDatabase) : PlanRepository {
 class RoomRoutineRepository(db: MdcDatabase) : RoutineRepository {
     private val dao = db.routines()
     override val storeName = "routines"
-    override suspend fun all() = dao.all().map {
-        Routine(it.id, it.title, RoutineFrequency.valueOf(it.frequency), it.preferredStart?.let(LocalTime::parse), it.durationMinutes, it.enabled, Instant.parse(it.createdAt))
-    }
+    override fun observeAll(): Flow<List<Routine>> = dao.observeAll().map { l -> l.map { it.toDomain() } }
+    override suspend fun all() = dao.all().map { it.toDomain() }
+    override suspend fun get(id: String) = dao.get(id)?.toDomain()
     override suspend fun upsert(routine: Routine) = dao.upsert(
-        RoutineEntity(routine.id, routine.title, routine.frequency.name, routine.preferredStart?.toString(), routine.durationMinutes, routine.enabled, routine.createdAt.toString()),
+        RoutineEntity(
+            routine.id, routine.title, routine.frequency.name, routine.preferredStart?.toString(), routine.durationMinutes, routine.enabled,
+            routine.createdAt.toString(), routine.dayOfWeek?.name, routine.remind,
+        ),
     )
+    override suspend fun delete(id: String) = dao.delete(id)
     override suspend fun deleteAll() = dao.deleteAll()
     override suspend fun count() = dao.count()
+
+    private fun RoutineEntity.toDomain() = Routine(
+        id, title, RoutineFrequency.valueOf(frequency), preferredStart?.let(LocalTime::parse), durationMinutes, enabled, Instant.parse(createdAt),
+        dayOfWeek?.let(DayOfWeek::valueOf), remind,
+    )
 }
 
 class RoomMemoryStore(db: MdcDatabase) : MemoryStore {
@@ -201,12 +211,12 @@ class RoomSecurityStore(db: MdcDatabase) : SecurityStore {
 private fun TaskEntity.toDomain() = Task(
     id, title, Priority.valueOf(priority), durationMinutes, date?.let(LocalDate::parse), deadline?.let(LocalDateTime::parse),
     TaskStatus.valueOf(status), parentId, Instant.parse(createdAt), Instant.parse(updatedAt), preferredStart?.let(LocalTime::parse),
-    notes, personal,
+    notes, personal, routineId, remindAt?.let(LocalTime::parse),
 )
 
 private fun Task.toEntity() = TaskEntity(
     id, title, priority.name, durationMinutes, date?.toString(), deadline?.toString(), status.name, parentId, createdAt.toString(), updatedAt.toString(),
-    preferredStart?.toString(), notes, personal,
+    preferredStart?.toString(), notes, personal, routineId, remindAt?.toString(),
 )
 
 private fun FixedEventEntity.toDomain() = FixedEvent(id, title, LocalDate.parse(date), LocalTime.parse(start), durationMinutes, EventSource.valueOf(source))

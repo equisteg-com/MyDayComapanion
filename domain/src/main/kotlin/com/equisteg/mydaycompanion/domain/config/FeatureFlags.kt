@@ -5,10 +5,10 @@ package com.equisteg.mydaycompanion.domain.config
  * capabilities the build documents defer (cloud, sync, accounts, analytics, external integrations).
  */
 enum class Flag(val key: String, val defaultEnabled: Boolean, val locked: Boolean = false) {
-    REMINDERS("reminders", defaultEnabled = false),
+    REMINDERS("reminders", defaultEnabled = true),
     VOICE("voice", defaultEnabled = false),
     CALENDAR_READ("calendar_read", defaultEnabled = false),
-    ROUTINES("routines", defaultEnabled = false),
+    ROUTINES("routines", defaultEnabled = true),
     LOCAL_LLM("local_llm", defaultEnabled = false),
 
     CLOUD_AI("cloud_ai", defaultEnabled = false, locked = true),

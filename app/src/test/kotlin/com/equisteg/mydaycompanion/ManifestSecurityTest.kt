@@ -18,7 +18,12 @@ class ManifestSecurityTest {
         .newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
 
     /** Permissions allowed in the current phase. Adding one requires an entry in docs/prebuild/06-permission-model.md. */
-    private val allowedPermissions = setOf("android.permission.USE_BIOMETRIC", "android.permission.USE_FINGERPRINT")
+    private val allowedPermissions = setOf(
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+    )
 
     @Test
     fun `no network permission and no unapproved permissions`() {
@@ -48,6 +53,15 @@ class ManifestSecurityTest {
             if ((activities.item(i) as Element).getAttributeNS(ns, "exported") == "true") exported++
         }
         assertEquals(1, exported)
-        listOf("service", "receiver", "provider").forEach { assertEquals(0, doc.getElementsByTagName(it).length, it) }
+        listOf("service", "provider").forEach { assertEquals(0, doc.getElementsByTagName(it).length, it) }
+    }
+
+    @Test
+    fun `receivers are the approved ones and none is exported`() {
+        val receivers = doc.getElementsByTagName("receiver")
+        val names = (0 until receivers.length).map { receivers.item(it) as Element }.onEach {
+            assertEquals("false", it.getAttributeNS(ns, "exported"), "${it.getAttributeNS(ns, "name")} must declare exported=false")
+        }.map { it.getAttributeNS(ns, "name") }
+        assertEquals(listOf(".reminders.ReminderReceiver"), names)
     }
 }

@@ -15,12 +15,15 @@
 |---|---|---|---|---|
 | INTERNET, ACCESS_NETWORK_STATE | never in V1 | — | — | Explicitly removed (`tools:node="remove"`) |
 | USE_BIOMETRIC, USE_FINGERPRINT (API < 28) | 1 (agent OS PR 2) | Show the system fingerprint/face/screen-lock prompt for app lock and L3/L4/personal approvals. Install-time (normal) permissions, no runtime dialog; declared by `androidx.biometric` and declared explicitly in our manifest so the allowlist test sees them. The app never receives biometric data, only success or failure. | L0 | Declared |
-| POST_NOTIFICATIONS (API 33+) | 1 | Local reminders | L1 | Not declared yet |
-| RECEIVE_BOOT_COMPLETED | 1 | Re-register reminders after reboot | L0 | Not declared yet |
+| POST_NOTIFICATIONS (API 33+) | 1 (agent OS part 4) | Local reminders, the Done button and the morning brief. Asked once after first-run setup; if refused, reminders are skipped (no tool call is made) and everything else works. Lock-screen notifications show only "Reminder" (`VISIBILITY_PRIVATE` with a public version); personal tasks never show their title anywhere. | L1 | Declared |
+| RECEIVE_BOOT_COMPLETED | 1 (agent OS part 4) | Android drops alarms on restart. `ReminderReceiver` (not exported) re-runs daily maintenance after boot, an app update or a clock/time-zone change. Install-time permission, no dialog. | L0 | Declared |
 | RECORD_AUDIO | 1 | On-device speech input, only while the mic button is held | L2 | Not declared yet |
 | READ_CALENDAR | 1 | Show fixed events when planning (read-only) | L2 | Not declared yet |
-| SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM | not planned | Inexact window alarms are enough | — | Not requested |
+| SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM | not planned | `setAndAllowWhileIdle` alarms need no permission; in deep idle they can arrive a few minutes late (OQ-17) | — | Not requested |
 | WRITE_CALENDAR, contacts, SMS, location, storage | not planned | — | — | Not requested |
+
+Components: one exported activity (the launcher) and one receiver, `.reminders.ReminderReceiver`, with
+`exported="false"`; `ManifestSecurityTest` fails on any other receiver, any exported receiver, or any service or provider.
 
 Adding one requires: a row here, the allowlist in `ManifestSecurityTest`, a just-in-time rationale screen, and
 graceful behaviour when denied.
@@ -36,7 +39,10 @@ graceful behaviour when denied.
 | `tasks.delete` | L2 | yes | always | — | — | task and its subtasks can no longer be read |
 | `tasks.addSubtask` | L2 | yes | when proposed by agent; always under a personal task | — | — | new subtask re-read with its parent |
 | `settings.update` | L1 | **no** | never | — | — | stored preferences equal requested |
-| `reminders.schedule` | L1 | yes | never | POST_NOTIFICATIONS | reminders (off) | scheduler accepted |
+| `reminders.sync` | L1 | **no** | never | POST_NOTIFICATIONS | reminders (on) | scheduler registered exactly the planned reminders |
+| `routines.create` / `routines.update` | L2 | yes | when proposed by agent | — | routines (on) | routine re-read and equal |
+| `routines.delete` | L2 | yes | always | — | routines (on) | routine can no longer be read; its tasks stay |
+| `routines.materialize` | L1 | **no** | never | — | routines (on) | each due routine has exactly one task that day |
 | `data.export` | L3 | **no** | always | — (SAF) | — | bytes written = export size |
 | `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0; then the app deletes the database files and destroys the key |
 | `security.updateSettings` | L4 | **no** | always | — | — | stored settings equal requested |

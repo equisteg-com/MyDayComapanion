@@ -11,7 +11,7 @@ import com.equisteg.mydaycompanion.domain.config.Flag
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
-import com.equisteg.mydaycompanion.domain.tools.ScheduleReminderTool
+import com.equisteg.mydaycompanion.domain.tools.SyncRemindersTool
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -80,10 +80,10 @@ class AgentSecurityTest {
 
     @Test
     fun `revoked or missing permission blocks the tool`() = runTest {
-        val reminder = ProposedAction("reminders.schedule", JsonObject(mapOf("taskId" to JsonPrimitive("t"), "at" to JsonPrimitive("2026-10-07T09:00:00Z"))))
+        val reminder = ProposedAction("reminders.sync", JsonObject(mapOf("from" to JsonPrimitive("2026-10-07"), "days" to JsonPrimitive(2))))
         val noPermission = TestGraph(flags = FeatureFlags(mapOf(Flag.REMINDERS to true)))
         assertEquals(ExecutionResult.Denied("PERMISSION_MISSING"), noPermission.orchestrator.execute(reminder, Requester.USER))
-        val flagOff = TestGraph(grantedPermissions = setOf(ScheduleReminderTool.POST_NOTIFICATIONS))
+        val flagOff = TestGraph(flags = FeatureFlags(mapOf(Flag.REMINDERS to false)), grantedPermissions = setOf(SyncRemindersTool.POST_NOTIFICATIONS))
         assertEquals(ExecutionResult.Denied("FEATURE_DISABLED"), flagOff.orchestrator.execute(reminder, Requester.USER))
     }
 

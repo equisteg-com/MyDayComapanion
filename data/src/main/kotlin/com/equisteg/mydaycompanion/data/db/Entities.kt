@@ -8,7 +8,7 @@ import androidx.room.PrimaryKey
 // Dates/times are stored as ISO-8601 strings so exported databases stay readable and
 // migrations do not depend on converter classes.
 
-@Entity(tableName = "tasks", indices = [Index("date"), Index("parentId")])
+@Entity(tableName = "tasks", indices = [Index("date"), Index("parentId"), Index("routineId")])
 data class TaskEntity(
     @PrimaryKey val id: String,
     val title: String,
@@ -25,6 +25,9 @@ data class TaskEntity(
     /** Added in schema version 4. */
     val notes: String? = null,
     @ColumnInfo(defaultValue = "0") val personal: Boolean = false,
+    /** Added in schema version 5. */
+    val routineId: String? = null,
+    val remindAt: String? = null,
 )
 
 @Entity(tableName = "fixed_events", indices = [Index("date")])
@@ -67,6 +70,9 @@ data class RoutineEntity(
     val durationMinutes: Int,
     val enabled: Boolean,
     val createdAt: String,
+    /** Added in schema version 5. */
+    val dayOfWeek: String? = null,
+    @ColumnInfo(defaultValue = "1") val remind: Boolean = true,
 )
 
 @Entity(tableName = "memories", indices = [Index("status")])

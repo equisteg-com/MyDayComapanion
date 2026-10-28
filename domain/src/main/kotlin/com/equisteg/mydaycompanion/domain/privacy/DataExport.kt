@@ -50,6 +50,7 @@ class DataExportService(
                 "deadline" to it.deadline?.toString(), "status" to it.status.name, "parentId" to it.parentId,
                 "createdAt" to it.createdAt.toString(), "updatedAt" to it.updatedAt.toString(),
                 "preferredStart" to it.preferredStart?.toString(), "notes" to it.notes, "personal" to it.personal.toString(),
+                "routineId" to it.routineId, "remindAt" to it.remindAt?.toString(),
             )
         },
         fixedEvents = events.all().map {
@@ -71,6 +72,7 @@ class DataExportService(
                 "id" to it.id, "title" to it.title, "frequency" to it.frequency.name,
                 "preferredStart" to it.preferredStart?.toString(), "durationMinutes" to it.durationMinutes.toString(),
                 "enabled" to it.enabled.toString(), "createdAt" to it.createdAt.toString(),
+                "dayOfWeek" to it.dayOfWeek?.name, "remind" to it.remind.toString(),
             )
         },
         memories = memories.all().map {

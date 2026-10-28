@@ -1,9 +1,12 @@
 package com.equisteg.mydaycompanion
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.enableEdgeToEdge
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
@@ -11,6 +14,7 @@ import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
@@ -36,6 +40,11 @@ import kotlin.system.exitProcess
 class MainActivity : FragmentActivity() {
     private lateinit var viewModel: MainViewModel
 
+    // Reminders need this on Android 13+. Asked once, after first-run setup; "no" is respected and the app works without it.
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) viewModel.onNotificationsAllowed()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -51,6 +60,13 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.state.map { it.authRequest }.distinctUntilChanged().collect { request -> request?.let(::authenticate) }
+            }
+        }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.state.map { it.preferencesLoaded && !it.showOnboarding && !it.locked }.distinctUntilChanged().collect { ready ->
+                    if (ready) askForNotificationsOnce()
+                }
             }
         }
         lifecycleScope.launch {
@@ -100,6 +116,15 @@ class MainActivity : FragmentActivity() {
                 .setConfirmationRequired(true)
                 .build(),
         )
+    }
+
+    private fun askForNotificationsOnce() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) return
+        val prefs = getSharedPreferences("permission_requests", MODE_PRIVATE)
+        if (prefs.getBoolean("notifications", false)) return
+        prefs.edit { putBoolean("notifications", true) }
+        notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
     /** After a wipe the database and its key are gone; start a fresh process so nothing old stays in memory. */

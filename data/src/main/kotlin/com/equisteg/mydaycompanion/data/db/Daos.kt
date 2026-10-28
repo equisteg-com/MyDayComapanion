@@ -58,6 +58,9 @@ abstract class PlanDao {
 @Dao
 interface RoutineDao {
     @Query("SELECT * FROM routines ORDER BY createdAt") suspend fun all(): List<RoutineEntity>
+    @Query("SELECT * FROM routines ORDER BY createdAt") fun observeAll(): Flow<List<RoutineEntity>>
+    @Query("SELECT * FROM routines WHERE id = :id") suspend fun get(id: String): RoutineEntity?
+    @Query("DELETE FROM routines WHERE id = :id") suspend fun delete(id: String)
     @Insert(onConflict = OnConflictStrategy.REPLACE) suspend fun upsert(item: RoutineEntity)
     @Query("DELETE FROM routines") suspend fun deleteAll()
     @Query("SELECT COUNT(*) FROM routines") suspend fun count(): Int

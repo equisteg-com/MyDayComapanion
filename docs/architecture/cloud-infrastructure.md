@@ -44,8 +44,8 @@ What the subscription check changes in the app:
 | F12 App lock | Phone | Yes |
 | F15 Export and delete everything (files and key destroyed) | Phone | Yes |
 | F16 History of actions | Phone | Yes (filters still to do) |
-| F4 Reminders that survive a restart | Phone (AlarmManager, notifications) | Not yet (part 4) |
-| F5 Routines | Phone (WorkManager) | Not yet (part 4) |
+| F4 Reminders that survive a restart | Phone (AlarmManager, notifications) | Yes (part 4) |
+| F5 Routines | Phone (AlarmManager nightly run) | Yes (part 4) |
 | F6 Voice in and out | Phone (on-device speech recogniser and text-to-speech) | Not yet (part 5) |
 | F7 Calendar read | Phone (Calendar Provider) | Not yet (part 5) |
 | F8 Device actions: alarm, call, SMS or e-mail draft, maps | Phone (Android intents; the owner presses Send) | Not yet (part 5) |
