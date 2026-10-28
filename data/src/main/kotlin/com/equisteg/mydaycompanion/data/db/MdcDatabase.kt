@@ -33,7 +33,7 @@ abstract class MdcDatabase : RoomDatabase() {
     abstract fun security(): SecurityDao
 
     companion object {
-        const val VERSION = 4
+        const val VERSION = 5
         const val NAME = "mydaycompanion.db"
     }
 }
@@ -86,5 +86,16 @@ object Migrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    /** v5: routines learn a weekday and a reminder switch; tasks remember their routine and an explicit reminder time. */
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `routineId` TEXT")
+            db.execSQL("ALTER TABLE `tasks` ADD COLUMN `remindAt` TEXT")
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_tasks_routineId` ON `tasks` (`routineId`)")
+            db.execSQL("ALTER TABLE `routines` ADD COLUMN `dayOfWeek` TEXT")
+            db.execSQL("ALTER TABLE `routines` ADD COLUMN `remind` INTEGER NOT NULL DEFAULT 1")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

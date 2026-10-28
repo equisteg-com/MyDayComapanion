@@ -58,7 +58,9 @@ internal fun parseClock(text: String): Result<LocalTime?> {
 
 /** One task with its subtasks under it; tap the title to edit, tick the box to mark it done. */
 @Composable
-fun TaskRows(tasks: List<Task>, onToggle: (String) -> Unit, onEdit: (String) -> Unit) {
+fun TaskRows(all: List<Task>, onToggle: (String) -> Unit, onEdit: (String) -> Unit) {
+    // A skipped routine task stays stored (so the routine doesn't add it back) but is not shown.
+    val tasks = all.filter { it.status != TaskStatus.CANCELLED }
     val children = tasks.filter { it.parentId != null }.groupBy { it.parentId }
     val ids = tasks.map { it.id }.toSet()
     // Subtasks whose parent sits on another day are shown on their own.

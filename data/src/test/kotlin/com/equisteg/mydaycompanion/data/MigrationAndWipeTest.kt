@@ -10,8 +10,10 @@ import com.equisteg.mydaycompanion.data.db.Migrations
 import com.equisteg.mydaycompanion.data.encryption.DatabaseKeyProvider
 import com.equisteg.mydaycompanion.data.privacy.LocalStorageWiper
 import com.equisteg.mydaycompanion.data.repository.RoomPreferencesStore
+import com.equisteg.mydaycompanion.data.repository.RoomRoutineRepository
 import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
+import com.equisteg.mydaycompanion.domain.model.RoutineFrequency
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import kotlinx.coroutines.test.runTest
@@ -72,6 +74,28 @@ class MigrationAndWipeTest {
     }
 
     @Test
+    fun `a version 4 routine keeps its fields and gets reminders on after migrating`() = runTest {
+        helper.createDatabase(ROUTINES, 4).apply {
+            execSQL(
+                "INSERT INTO routines (id, title, frequency, preferredStart, durationMinutes, enabled, createdAt) " +
+                    "VALUES ('r1', 'Gym', 'WEEKDAYS', '07:00', 45, 1, '2026-10-06T07:00:00Z')",
+            )
+            close()
+        }
+        helper.runMigrationsAndValidate(ROUTINES, MdcDatabase.VERSION, true, *Migrations.ALL).close()
+        val db = Room.databaseBuilder(context, MdcDatabase::class.java, ROUTINES).addMigrations(*Migrations.ALL).allowMainThreadQueries().build()
+        try {
+            val r = RoomRoutineRepository(db).get("r1")!!
+            assertEquals("Gym", r.title)
+            assertEquals(RoutineFrequency.WEEKDAYS, r.frequency)
+            assertTrue(r.remind)
+            assertEquals(null, r.dayOfWeek)
+        } finally {
+            db.close()
+        }
+    }
+
+    @Test
     fun `wipe deletes the database files and destroys the key`() = runTest {
         val keys = FakeKeys()
         val db = Room.databaseBuilder(context, MdcDatabase::class.java, MdcDatabase.NAME).allowMainThreadQueries().build()
@@ -94,5 +118,6 @@ class MigrationAndWipeTest {
     private companion object {
         const val MIGRATED = "migration-test.db"
         const val EMPTY = "migration-empty-test.db"
+        const val ROUTINES = "migration-routines-test.db"
     }
 }

@@ -1,7 +1,7 @@
 package com.equisteg.mydaycompanion.domain.future
 
 import com.equisteg.mydaycompanion.domain.model.FixedEvent
-import java.time.Instant
+import com.equisteg.mydaycompanion.domain.reminders.Reminder
 import java.time.LocalDate
 
 /*
@@ -22,10 +22,10 @@ interface VoiceProvider {
     suspend fun speak(text: String)
 }
 
-/** Local reminders. Phase 1, behind the reminders flag + POST_NOTIFICATIONS. */
+/** Local reminders, behind the reminders flag + POST_NOTIFICATIONS. */
 interface NotificationScheduler {
-    suspend fun schedule(reminderId: String, at: Instant, title: String): Boolean
-    suspend fun cancel(reminderId: String)
+    /** Cancels every reminder scheduled before and registers [reminders]; returns how many were registered. */
+    suspend fun replaceAll(reminders: List<Reminder>): Int
     suspend fun cancelAll()
 }
 
@@ -64,7 +64,6 @@ object NoVoiceProvider : VoiceProvider {
 }
 
 object NoNotificationScheduler : NotificationScheduler {
-    override suspend fun schedule(reminderId: String, at: Instant, title: String) = false
-    override suspend fun cancel(reminderId: String) = Unit
+    override suspend fun replaceAll(reminders: List<Reminder>) = 0
     override suspend fun cancelAll() = Unit
 }

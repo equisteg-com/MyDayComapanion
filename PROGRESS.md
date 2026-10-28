@@ -1,5 +1,30 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 4: reminders, routines, morning brief
+
+- Reminders (F4): `ReminderPlanner` turns the saved plans for today and tomorrow into notifications: each task
+  `reminderLeadMinutes` before its planned start (or at its own "remind me at" time), each fixed event the same lead
+  before it, and a morning brief at the start of the day. Personal tasks show "Personal task", never the title; the
+  lock screen shows only "Reminder". `reminders.sync` (L1, user-only) registers them with AlarmManager and is run
+  after every plan change, on open, each night after midnight and after a restart, a clock change or an app update.
+- Notification buttons: Done marks the task done through the orchestrator; a personal task asks the owner to open the
+  app, because it needs the fingerprint, face or PIN. "In 10 min" snoozes a task or event reminder.
+- Deferred from the part 4 list: standing approvals (OQ-18). The build doc's "daily WorkManager job" is an
+  AlarmManager alarm shortly after midnight instead, so no new dependency is needed.
+- Routines (F5): `routines.create/update/delete/materialize`. "Gym every weekday at 7am" now proposes the first task
+  and a routine; the routine adds one task on each due day from then on. Deleting a routine task skips it for that
+  day (kept as CANCELLED, hidden) so it isn't added back. New Routines tab.
+- `DailyMaintenance` runs the routine and reminder tools through the orchestrator as the new `Requester.SYSTEM`
+  (policy: L0/L1 tools that never need a confirmation only; audited as SYSTEM), one run at a time, skipping calls
+  that would do nothing. Routine tasks have a fixed id per routine and day, so overlapping runs can't duplicate them.
+  The nightly alarm is set after every run, so routines keep working when notifications are refused.
+- Room schema v5 (`MIGRATION_4_5`): `tasks.routineId`, `tasks.remindAt`, `routines.dayOfWeek`, `routines.remind`.
+- Permissions: POST_NOTIFICATIONS (asked once, after setup) and RECEIVE_BOOT_COMPLETED; one non-exported receiver.
+  Still no INTERNET.
+
+Checks run here: `:domain:test` passes (new `RoutinesAndRemindersTest`, golden evaluation unchanged). `:data`, `:app`,
+lint and the APK run in CI.
+
 ## 2026-10-27 — Consolidation into `equisteg-com/MyDayComapanion`
 
 Every earlier version of the app is combined here, with its commit history:

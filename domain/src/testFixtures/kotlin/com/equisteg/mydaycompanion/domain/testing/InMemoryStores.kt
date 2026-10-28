@@ -61,12 +61,15 @@ class InMemoryPlanRepository : PlanRepository {
 }
 
 class InMemoryRoutineRepository : RoutineRepository {
-    private val items = linkedMapOf<String, Routine>()
+    private val state = MutableStateFlow<Map<String, Routine>>(linkedMapOf())
     override val storeName = "routines"
-    override suspend fun all() = items.values.toList()
-    override suspend fun upsert(routine: Routine) { items[routine.id] = routine }
-    override suspend fun deleteAll() = items.clear()
-    override suspend fun count() = items.size
+    override fun observeAll() = state.map { it.values.toList() }
+    override suspend fun all() = state.value.values.toList()
+    override suspend fun get(id: String) = state.value[id]
+    override suspend fun upsert(routine: Routine) { state.value = state.value + (routine.id to routine) }
+    override suspend fun delete(id: String) { state.value = state.value - id }
+    override suspend fun deleteAll() { state.value = emptyMap() }
+    override suspend fun count() = state.value.size
 }
 
 class InMemoryMemoryStore : MemoryStore {

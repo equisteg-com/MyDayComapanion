@@ -10,6 +10,7 @@ import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
 import com.equisteg.mydaycompanion.domain.model.DayPlan
+import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
@@ -21,7 +22,9 @@ import com.equisteg.mydaycompanion.domain.security.ChallengeGate
 import com.equisteg.mydaycompanion.domain.security.ChallengeHasher
 import com.equisteg.mydaycompanion.domain.security.ChallengeResult
 import com.equisteg.mydaycompanion.domain.security.SecuritySettings
+import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSettingsTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateTaskTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
@@ -111,6 +114,9 @@ class MainViewModel(
     val tasks: StateFlow<List<Task>> = services.tasks.observeAll()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val routines: StateFlow<List<Routine>> = services.routines.observeAll()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
     private var backgroundedAt: Instant? = null
 
     init {
@@ -126,6 +132,8 @@ class MainViewModel(
                     preferencesLoaded = true,
                 )
             }
+            // Today's routine tasks and reminders; also re-run each night by the maintenance alarm.
+            if (prefs.onboardingDone) services.maintenance.run()
         }
     }
 
@@ -139,21 +147,31 @@ class MainViewModel(
         }
     }
 
+    /** The owner allowed notifications; register today's reminders now rather than at the next change. */
+    fun onNotificationsAllowed() = launchBusy { services.maintenance.syncReminders() }
+
     fun onDiscardProposal() = _state.update { it.copy(proposal = null) }
 
     /** The user reviewed the proposed tasks and plan and tapped "Add to my day". */
     fun onAcceptProposal() = launchBusy {
         val proposal = _state.value.proposal ?: return@launchBusy
+        var routineProblem: String? = null
         for (action in proposal.actions) {
             val result = runWithUserApproval(action, Requester.AGENT)
-            if (result !is ExecutionResult.Done) {
-                _state.update { it.copy(message = describe(result)) }
-                return@launchBusy
+            if (result is ExecutionResult.Done) continue
+            // The tasks are already saved by now; a routine that can't be saved must not leave the
+            // proposal on screen, or a second tap would add the tasks again.
+            if (action.toolId == "routines.create") {
+                routineProblem = "The tasks were added, but the repeat couldn't be saved (${describe(result).lowercase()})."
+                continue
             }
+            _state.update { it.copy(message = describe(result)) }
+            return@launchBusy
         }
+        services.maintenance.run()
         selectDate(proposal.previewPlans.first().date)
         val days = proposal.previewPlans.size
-        _state.update { it.copy(proposal = null, input = "", message = if (days > 1) "Added to $days days." else "Added to your day.") }
+        _state.update { it.copy(proposal = null, input = "", message = routineProblem ?: if (days > 1) "Added to $days days." else "Added to your day.") }
     }
 
     /** Ticks a task done, or back to not done. */
@@ -170,11 +188,36 @@ class MainViewModel(
 
     fun onDeleteTask(taskId: String) = launchBusy {
         val subtasks = services.tasks.all().count { it.parentId == taskId }
+        if (services.tasks.get(taskId)?.routineId != null) {
+            request(ProposedAction("tasks.delete", args("taskId" to taskId)), "Skip today?", "This one repeats. It is skipped today and comes back on its next day. Change or stop it in Routines.")
+            return@launchBusy
+        }
         request(
             ProposedAction("tasks.delete", args("taskId" to taskId)),
             "Delete this task?",
             if (subtasks > 0) "The task and its $subtasks subtasks will be deleted." else "The task will be deleted.",
         )
+    }
+
+    /** New routine from the Routines screen. The owner typed it, so it runs at once. */
+    fun onCreateRoutine(routine: Routine) = launchBusy {
+        val r = services.orchestrator.execute(ProposedAction("routines.create", CreateRoutineTool.args(routine)), Requester.USER)
+        if (r is ExecutionResult.Done) {
+            services.maintenance.run()
+            _state.update { it.copy(message = "Routine saved.") }
+        } else {
+            _state.update { it.copy(message = describe(r)) }
+        }
+    }
+
+    /** Edit, pause/resume, or switch reminders for a routine. */
+    fun onUpdateRoutine(routine: Routine) = launchBusy {
+        val r = services.orchestrator.execute(ProposedAction("routines.update", UpdateRoutineTool.args(routine)), Requester.USER)
+        if (r is ExecutionResult.Done) services.maintenance.run() else _state.update { it.copy(message = describe(r)) }
+    }
+
+    fun onDeleteRoutine(routineId: String) = launchBusy {
+        request(ProposedAction("routines.delete", args("routineId" to routineId)), "Delete this routine?", "It stops adding tasks. Tasks it already added stay.")
     }
 
     fun onAddSubtask(parentId: String, title: String, durationMinutes: Int) = launchBusy {
@@ -392,6 +435,7 @@ class MainViewModel(
                 }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
+                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 _state.update { it.copy(message = describe(r)) }
                 refreshHistory()
             }
@@ -474,6 +518,8 @@ class MainViewModel(
         }
         val r = services.orchestrator.execute(ProposedAction("plan.generate", args(*pairs.toTypedArray())), Requester.USER)
         if (r !is ExecutionResult.Done) _state.update { it.copy(message = describe(r)) }
+        // A changed plan changes when reminders fire. "Feature off" or "no permission" is fine here.
+        services.maintenance.syncReminders()
     }
 
     private fun launchBusy(block: suspend () -> Unit) {

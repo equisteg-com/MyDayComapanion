@@ -10,10 +10,12 @@ import com.equisteg.mydaycompanion.domain.planner.PlanRequest
 import com.equisteg.mydaycompanion.domain.planner.PlanValidator
 import com.equisteg.mydaycompanion.domain.planner.PlannerEngine
 import com.equisteg.mydaycompanion.domain.privacy.DataDeletionService
+import com.equisteg.mydaycompanion.domain.reminders.ReminderPlanner
 import com.equisteg.mydaycompanion.domain.privacy.DataExportService
 import com.equisteg.mydaycompanion.domain.repository.FixedEventRepository
 import com.equisteg.mydaycompanion.domain.repository.PlanRepository
 import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
+import com.equisteg.mydaycompanion.domain.repository.RoutineRepository
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
 import com.equisteg.mydaycompanion.domain.safety.ContentSafety
 import kotlinx.serialization.json.JsonObject
@@ -43,7 +45,7 @@ internal fun validDuration(d: Int?): Boolean = d != null && d in Task.MIN_DURATI
 
 /**
  * tasks.create — stores tasks and fixed events for one day.
- * Args: {"date":"YYYY-MM-DD","tasks":[{"title","priority","durationMinutes","deadline"?,"preferredStart"?}],"fixedEvents":[{"title","start","durationMinutes"}]}
+ * Args: {"date":"YYYY-MM-DD","tasks":[{"title","priority","durationMinutes","deadline"?,"preferredStart"?,"remindAt"?}],"fixedEvents":[{"title","start","durationMinutes"}]}
  */
 class CreateTasksTool(
     private val tasks: TaskRepository,
@@ -68,7 +70,7 @@ class CreateTasksTool(
         if (ts.size + es.size == 0 || ts.size > 25 || es.size > 15) return ArgsValidation.Rejected("size")
         for (e in ts) {
             val o = e.asObject() ?: return ArgsValidation.Rejected("task")
-            if (!o.onlyKeys("title", "priority", "durationMinutes", "deadline", "preferredStart")) return ArgsValidation.Rejected("task keys")
+            if (!o.onlyKeys("title", "priority", "durationMinutes", "deadline", "preferredStart", "remindAt")) return ArgsValidation.Rejected("task keys")
             if (!validTitle(o.string("title"))) return ArgsValidation.Rejected("task title")
             if (Priority.entries.none { it.name == o.string("priority") }) return ArgsValidation.Rejected("task priority")
             if (!validDuration(o.int("durationMinutes"))) return ArgsValidation.Rejected("task duration")
@@ -76,6 +78,8 @@ class CreateTasksTool(
             if (dl != null && parseTime(dl) == null) return ArgsValidation.Rejected("task deadline")
             val ps = o.optionalString("preferredStart").getOrElse { return ArgsValidation.Rejected("task preferredStart") }
             if (ps != null && parseTime(ps) == null) return ArgsValidation.Rejected("task preferredStart")
+            val ra = o.optionalString("remindAt").getOrElse { return ArgsValidation.Rejected("task remindAt") }
+            if (ra != null && parseTime(ra) == null) return ArgsValidation.Rejected("task remindAt")
         }
         for (e in es) {
             val o = e.asObject() ?: return ArgsValidation.Rejected("event")
@@ -100,6 +104,7 @@ class CreateTasksTool(
                 deadline = parseTime(o.optionalString("deadline").getOrNull())?.let { date.atTime(it) },
                 createdAt = now,
                 preferredStart = parseTime(o.optionalString("preferredStart").getOrNull()),
+                remindAt = parseTime(o.optionalString("remindAt").getOrNull()),
             )
         }
         val newEvents = args.array("fixedEvents")!!.map { it.asObject()!! }.map { o ->
@@ -211,42 +216,55 @@ class CompleteTaskTool(private val tasks: TaskRepository, private val clock: Clo
     override suspend fun touchesPersonal(args: JsonObject): Boolean = tasks.get(args.string("taskId")!!)?.personal == true
 }
 
-/** reminders.schedule — Phase 1 capability; registered now so the policy path is exercised. Args: {"taskId","at"} */
-class ScheduleReminderTool(
+/**
+ * reminders.sync — works out every reminder for the next [days] days from the saved plans and
+ * registers them with the system, replacing what was registered before. Run by the app itself after
+ * a plan changes, at the start of each day and after a restart. Args: {"from":"YYYY-MM-DD","days":1..7}
+ */
+class SyncRemindersTool(
+    private val plans: PlanRepository,
     private val tasks: TaskRepository,
+    private val routines: RoutineRepository,
+    private val preferences: PreferencesStore,
     private val scheduler: NotificationScheduler,
+    private val clock: Clock,
 ) : AgentTool {
     override val spec = ToolSpec(
-        id = "reminders.schedule",
-        description = "Schedule a local reminder notification for a task.",
+        id = "reminders.sync",
+        description = "Register local reminder notifications for the planned days.",
         riskLevel = RiskLevel.L1,
         androidPermissions = setOf(POST_NOTIFICATIONS),
         featureFlag = Flag.REMINDERS.key,
-        agentProposable = true,
+        agentProposable = false,
         confirmation = Confirmation.NEVER,
-        verification = "Scheduler reports the alarm as registered.",
+        verification = "The scheduler registered exactly the reminders that were planned.",
     )
 
     override fun validate(args: JsonObject): ArgsValidation {
-        if (!args.onlyKeys("taskId", "at") || args.string("taskId").isNullOrBlank()) return ArgsValidation.Rejected("taskId")
-        return try {
-            Instant.parse(args.string("at") ?: return ArgsValidation.Rejected("at"))
-            ArgsValidation.Ok
-        } catch (e: DateTimeParseException) {
-            ArgsValidation.Rejected("at")
-        }
+        if (!args.onlyKeys("from", "days")) return ArgsValidation.Rejected("unexpected keys")
+        if (parseDate(args.string("from")) == null) return ArgsValidation.Rejected("from")
+        val days = args.int("days") ?: return ArgsValidation.Rejected("days")
+        return if (days in 1..MAX_DAYS) ArgsValidation.Ok else ArgsValidation.Rejected("days")
     }
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
-        val task = tasks.get(args.string("taskId")!!) ?: return ToolOutcome.Failure("NOT_FOUND")
-        val ok = scheduler.schedule(task.id, Instant.parse(args.string("at")!!), task.title)
-        return if (ok) ToolOutcome.Success("scheduled") else ToolOutcome.Failure("SCHEDULER_UNAVAILABLE")
+        val from = parseDate(args.string("from"))!!
+        val days = (0 until args.int("days")!!).map { from.plusDays(it.toLong()) }.toSet()
+        val dayPlans = plans.all().filter { it.date in days }
+        val reminders = ReminderPlanner.plan(dayPlans, tasks.all(), preferences.get(), clock.instant(), clock.zone, routines.all())
+        val registered = scheduler.replaceAll(reminders)
+        return ToolOutcome.Success(
+            "reminders=$registered",
+            mapOf("planned" to reminders.size.toString(), "registered" to registered.toString()),
+        )
     }
 
-    override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean = true
+    override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean =
+        outcome.data["planned"] == outcome.data["registered"]
 
     companion object {
         const val POST_NOTIFICATIONS = "android.permission.POST_NOTIFICATIONS"
+        const val MAX_DAYS = 7
     }
 }
 

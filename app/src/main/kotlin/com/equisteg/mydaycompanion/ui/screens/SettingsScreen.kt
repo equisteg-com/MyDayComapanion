@@ -61,7 +61,13 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         HorizontalDivider()
         Text("Permissions", style = MaterialTheme.typography.titleMedium)
-        Text("This version asks for no runtime permissions. It uses the system fingerprint, face or screen-lock prompt to confirm it's you; it never sees your fingerprint. Reminders (notifications), voice (microphone) and calendar reading will each ask separately when they arrive, and can be turned off here.")
+        Text(
+            "Notifications: asked once, for reminders and the morning brief. If you say no, everything else still works; " +
+                "you can allow them later in Android Settings > Apps > MyDayCompanion > Notifications. " +
+                "On the lock screen a reminder only says \"Reminder\", never what it is for. " +
+                "The app also starts briefly after the phone restarts, only to put your reminders back. " +
+                "It uses the system fingerprint, face or screen-lock prompt to confirm it's you; it never sees your fingerprint.",
+        )
 
         HorizontalDivider()
         Text("Features", style = MaterialTheme.typography.titleMedium)

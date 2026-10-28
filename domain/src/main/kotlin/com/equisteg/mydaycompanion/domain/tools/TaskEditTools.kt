@@ -135,13 +135,19 @@ class DeleteTaskTool(private val tasks: TaskRepository) : AgentTool {
         val task = tasks.get(args.string("taskId")!!) ?: return ToolOutcome.Failure("NOT_FOUND")
         val children = tasks.children(task.id)
         children.forEach { tasks.delete(it.id) }
+        if (task.routineId != null) {
+            // A routine's task for a day is kept as CANCELLED, so the routine does not add it again that day.
+            tasks.upsert(listOf(task.copy(status = TaskStatus.CANCELLED, updatedAt = task.updatedAt)))
+            return ToolOutcome.Success("skipped subtasks=${children.size}", mapOf("skipped" to "true"))
+        }
         tasks.delete(task.id)
         return ToolOutcome.Success("deleted subtasks=${children.size}")
     }
 
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
         val id = args.string("taskId")!!
-        return tasks.get(id) == null && tasks.children(id).isEmpty()
+        val gone = if (outcome.data["skipped"] == "true") tasks.get(id)?.status == TaskStatus.CANCELLED else tasks.get(id) == null
+        return gone && tasks.children(id).isEmpty()
     }
 
     override suspend fun touchesPersonal(args: JsonObject): Boolean = tasks.get(args.string("taskId")!!)?.personal == true

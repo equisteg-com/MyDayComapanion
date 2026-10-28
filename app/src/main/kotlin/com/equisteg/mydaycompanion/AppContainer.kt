@@ -16,18 +16,20 @@ import com.equisteg.mydaycompanion.data.repository.RoomRoutineRepository
 import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
 import com.equisteg.mydaycompanion.domain.agent.AgentOrchestrator
+import com.equisteg.mydaycompanion.domain.agent.DailyMaintenance
 import com.equisteg.mydaycompanion.domain.ai.AiInferenceRouter
 import com.equisteg.mydaycompanion.domain.ai.ContextBuilder
 import com.equisteg.mydaycompanion.domain.ai.RuleBasedTaskExtractor
 import com.equisteg.mydaycompanion.domain.audit.AuditLog
 import com.equisteg.mydaycompanion.domain.config.FeatureFlags
-import com.equisteg.mydaycompanion.domain.future.NoNotificationScheduler
+import com.equisteg.mydaycompanion.domain.config.Flag
 import com.equisteg.mydaycompanion.domain.planner.DeterministicPlanner
 import com.equisteg.mydaycompanion.domain.policy.ToolAuthorizationPolicy
 import com.equisteg.mydaycompanion.domain.privacy.DataDeletionService
 import com.equisteg.mydaycompanion.domain.privacy.DataExportService
 import com.equisteg.mydaycompanion.domain.repository.PlanRepository
 import com.equisteg.mydaycompanion.domain.repository.PreferencesStore
+import com.equisteg.mydaycompanion.domain.repository.RoutineRepository
 import com.equisteg.mydaycompanion.domain.repository.TaskRepository
 import com.equisteg.mydaycompanion.domain.security.ChallengeVerifier
 import com.equisteg.mydaycompanion.domain.security.SecurityStore
@@ -39,8 +41,13 @@ import com.equisteg.mydaycompanion.domain.tools.DeleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
+import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
+import com.equisteg.mydaycompanion.domain.tools.DeleteRoutineTool
+import com.equisteg.mydaycompanion.domain.tools.MaterializeRoutinesTool
 import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
-import com.equisteg.mydaycompanion.domain.tools.ScheduleReminderTool
+import com.equisteg.mydaycompanion.domain.tools.SyncRemindersTool
+import com.equisteg.mydaycompanion.domain.tools.UpdateRoutineTool
+import com.equisteg.mydaycompanion.reminders.AlarmNotificationScheduler
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
 import com.equisteg.mydaycompanion.domain.tools.ToolRegistry
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
@@ -60,6 +67,10 @@ interface AppServices {
     val security: SecurityStore
     val challenges: ChallengeVerifier
     val preferences: PreferencesStore
+    val routines: RoutineRepository
+
+    /** Adds routine tasks, replans and re-registers reminders; run on open, after restarts and each night. */
+    val maintenance: DailyMaintenance
 
     /** Closes and deletes the database files and destroys their key (build doc §8.4). The app must restart afterwards. */
     fun wipeLocalStorage(): Boolean
@@ -80,16 +91,25 @@ class AppContainer(context: Context) : AppServices {
     override val tasks by lazy { RoomTaskRepository(db) }
     private val events by lazy { RoomFixedEventRepository(db) }
     override val plans by lazy { RoomPlanRepository(db) }
-    private val routines by lazy { RoomRoutineRepository(db) }
+    override val routines by lazy { RoomRoutineRepository(db) }
     private val memories by lazy { RoomMemoryStore(db) }
     override val audit by lazy { RoomAuditLog(db) }
     override val preferences by lazy { RoomPreferencesStore(db) }
     override val exportTargets by lazy { ContentResolverExportTargets(appContext.contentResolver) }
     override val security by lazy { RoomSecurityStore(db) }
     override val challenges by lazy { ChallengeVerifier(security, clock::instant) }
+    private val scheduler by lazy { AlarmNotificationScheduler(appContext, clock) }
+    private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
+    override val maintenance by lazy {
+        DailyMaintenance(
+            orchestrator, tasks, plans, routines, clock,
+            remindersReady = { flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS) },
+            afterRun = { scheduler.scheduleMaintenance() },
+        )
+    }
 
     override fun wipeLocalStorage(): Boolean =
-        LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+        runCatching { scheduler.cancelEverything() }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
 
     override val orchestrator: AgentOrchestrator by lazy {
         val ids = IdGenerator.RANDOM
@@ -98,7 +118,7 @@ class AppContainer(context: Context) : AppServices {
         val export = DataExportService(tasks, events, plans, routines, memories, audit, preferences, clock)
         val deletion = DataDeletionService(
             stores = listOf(tasks, events, plans, routines, memories, audit, preferences, security),
-            platformWipe = { NoNotificationScheduler.cancelAll() },
+            platformWipe = { scheduler.cancelAll() },
         )
         AgentOrchestrator(
             router = AiInferenceRouter(providers = listOf(rules), fallback = rules),
@@ -114,14 +134,18 @@ class AppContainer(context: Context) : AppServices {
                     DeleteTaskTool(tasks),
                     AddSubtaskTool(tasks, ids, clock),
                     UpdateSettingsTool(preferences),
-                    ScheduleReminderTool(tasks, NoNotificationScheduler),
+                    SyncRemindersTool(plans, tasks, routines, preferences, scheduler, clock),
+                    CreateRoutineTool(routines, ids, clock),
+                    UpdateRoutineTool(routines),
+                    DeleteRoutineTool(routines),
+                    MaterializeRoutinesTool(routines, tasks, clock),
                     ExportDataTool(export, exportTargets),
                     DeleteAllDataTool(deletion),
                     UpdateSecuritySettingsTool(security),
                     SetChallengeQuestionsTool(security),
                 ),
             ),
-            policy = ToolAuthorizationPolicy(flags, AndroidPermissionChecker(appContext)),
+            policy = ToolAuthorizationPolicy(flags, permissionChecker),
             audit = audit,
             memories = memories,
             tasks = tasks,

@@ -38,8 +38,11 @@ interface PlanRepository : ErasableStore {
 }
 
 interface RoutineRepository : ErasableStore {
+    fun observeAll(): Flow<List<Routine>>
     suspend fun all(): List<Routine>
+    suspend fun get(id: String): Routine?
     suspend fun upsert(routine: Routine)
+    suspend fun delete(id: String)
 }
 
 interface PreferencesStore : ErasableStore {
