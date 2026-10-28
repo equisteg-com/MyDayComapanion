@@ -90,8 +90,9 @@ class ReminderReceiver : BroadcastReceiver() {
             .setContentIntent(open)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
-            // On a locked screen only "MyDayCompanion: Reminder" shows, never the title.
-            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            // On a secure lock screen only "MyDayCompanion: Reminder" shows, unless the owner chose to see
+            // the text there (Settings). Personal tasks are titled "Personal task" either way.
+            .setVisibility(if (app.services.deviceSettings.lockScreenText) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(
                 NotificationCompat.Builder(context, CHANNEL_REMINDERS).setSmallIcon(R.drawable.ic_notification).setContentTitle(PUBLIC_TITLE).build(),
             )

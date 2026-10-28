@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 6a: memory, history, lost phone
+
+- Memory (F9): a new Memory tab. Each night the agent looks at finished tasks; a task finished on 3 different days
+  in 3 weeks at about the same time becomes a suggestion ("You usually do "Gym" around 07:30"). Personal tasks are
+  never used. Suggestions are not used until the owner taps Keep; "No thanks" means it is never suggested again.
+  The owner can add their own memories (active at once) and mark one private: it is kept encrypted but never given
+  to the model, and forgetting it needs the owner's verification. Kept memories go to Gemini Nano as preferences,
+  fenced as data. `MemoryPolicy` refuses rule-like, credential-like and link-like text from anyone.
+- Tools: `memory.propose` (L1, agent may propose), `memory.add` / `memory.activate` / `memory.delete` (L2, owner
+  only), `memory.reject`, `memory.purgeExpired`, `history.prune` (L1, owner or nightly run). History never holds
+  what a memory says.
+- History (F16): filters (blocked or failed, high risk, by me, by the assistant, automatic), plain action names,
+  and "Keep history for" 30 / 90 / 180 / 365 days (180 by default); older entries are removed nightly. The newest
+  30 days can never be removed this way.
+- Lost phone (F14): Settings explains what protects the owner, how to turn on Find My Device and Theft protection,
+  opens Android's security settings, and adds "Show reminder text on the lock screen" (off by default; personal
+  tasks never show their title). Screenshots and the recent-apps preview are blocked on Memory and the
+  challenge-question dialogs.
+- No new permission, dependency or database change (History retention uses two new queries on the existing table).
+
 ## 2026-10-28 — Gemini Nano (founder decision D-03)
 
 - On phones with Gemini Nano (Android AICore), typed and spoken text is understood by the model through ML Kit's

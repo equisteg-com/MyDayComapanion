@@ -34,4 +34,36 @@ interface AuditLog : ErasableStore {
     suspend fun record(entry: AuditEntry)
     suspend fun recent(limit: Int): List<AuditEntry>
     suspend fun all(): List<AuditEntry>
+
+    /** Entries older than [instant]; used to skip a retention run that has nothing to do. */
+    suspend fun countBefore(instant: Instant): Int
+
+    /** Removes entries older than [instant] (history retention, F16) and returns how many went. */
+    suspend fun deleteBefore(instant: Instant): Int
+}
+
+/** The History screen's filters (F16). Pure, so the screen and the tests agree on what each one shows. */
+enum class HistoryFilter(val label: String) {
+    ALL("All"),
+    ATTENTION("Blocked or failed"),
+    HIGH_RISK("High risk"),
+    BY_ME("By me"),
+    BY_ASSISTANT("By the assistant"),
+    AUTOMATIC("Automatic"),
+    ;
+
+    fun matches(e: AuditEntry): Boolean = when (this) {
+        ALL -> true
+        ATTENTION -> e.decision == AuditDecision.DENIED || e.outcome == AuditOutcome.FAILURE || e.outcome == AuditOutcome.VERIFICATION_FAILED
+        HIGH_RISK -> e.riskLevel != null && e.riskLevel >= RiskLevel.L3
+        BY_ME -> e.actor == AuditActor.USER
+        BY_ASSISTANT -> e.actor == AuditActor.AGENT
+        AUTOMATIC -> e.actor == AuditActor.SYSTEM
+    }
+}
+
+/** How long History keeps entries. The data map's default is 180 days; the owner can choose another. */
+object HistoryRetention {
+    val CHOICES_DAYS = listOf(30, 90, 180, 365)
+    const val DEFAULT_DAYS = 180
 }

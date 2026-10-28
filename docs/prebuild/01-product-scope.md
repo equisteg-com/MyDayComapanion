@@ -44,7 +44,7 @@ overrun and tasks silently slip. Existing assistants need an account and cloud p
 | Voice in/out | Interface + flag (off) | On-device only | See 07-ai-risk-model AI-12 |
 | Encrypted local storage | Built | | SQLCipher + Keystore |
 | Export, full deletion | Built | | |
-| Audit history | Built | Retention pruning | |
+| Audit history | Built | Filters and retention pruning built (2026-10-28) | |
 | Settings, permission management | Privacy screen | Per-permission controls | |
 | Battery/resource-aware AI | Built (router + energy policy) | | |
 | Device capability detection | Built (`AndroidDeviceStateProvider`) | Model capability probe | |
