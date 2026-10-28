@@ -1,3 +1,63 @@
+# CLAUDE.md — MyDayCompanion (built from the Equisteg product template)
+
+## Read this first: product override
+
+This repository was created from the Equisteg product template (the company rules further down). MyDayCompanion is
+an Android-first, **local-first** personal assistant, and its build documents override the template's generic stack
+(master build doc §1 and §6). Precedence:
+
+1. `docs/product/MYDAYCOMPANION_AGENT_OS_BUILD.md` (v2, 2026-10-09: personal agent OS scope, approvals, migration, theft protection, infrastructure costs; it replaces the scope sections of the two documents below and keeps their security rules)
+2. `docs/product/MYDAYCOMPANION_MASTER_BUILD.md`
+3. `docs/product/MYDAYCOMPANION_BUILD_SPEC.md`
+4. `docs/prebuild/*` (precheck evidence and resolved decisions; run `/precheck` to refresh)
+5. `product.config.json`
+6. The Equisteg template rules below — they still apply wherever the items above are silent
+   (zero-cost rule, Git workflow, branch names, never-push rules, PR template, risks-and-issues format, NEEDS HUMAN).
+
+What the override changes for this product (details in `docs/prebuild/03-architecture-decision.md`):
+
+| Template default | MyDayCompanion |
+|---|---|
+| `apps/mobile` React Native + Expo | Native Android: Gradle modules `app/` (Compose), `domain/` (pure Kotlin), `data/` (Room) at the repo root |
+| `apps/web`, `apps/api`, Cloudflare D1/KV/R2 | Not used in V1 (folders kept as future extension points) |
+| AdSense / AdMob, analytics, UMP consent | **None.** No ads, no analytics, no network permission at all |
+| Payments via `equisteg-platform` | Future only; no payments in V1 |
+| Maestro / Playwright / k6 / Lighthouse | Kotlin unit, Robolectric integration and Compose UI tests; golden AI evaluation |
+| Self-healing Worker watchdog | Not applicable (no server); Play vitals for crashes |
+
+Current phase: Phase 0 (internal foundation). Gate P0 was approved by the founder on 2026-10-06 with the defaults
+recorded in `docs/prebuild/00-prebuild-summary.md`; open founder decisions are in `docs/prebuild/12-open-questions.md`.
+
+## MyDayCompanion hard rules
+- Do not add a backend, cloud database, cloud storage, cloud AI, analytics, crash SDK, ads, account system,
+  paid API or any network call. V1 has no INTERNET permission; CI fails if the APK requests it.
+- AI/model output is untrusted data. It may only produce `task-extraction/v2` JSON, which is schema-validated
+  and domain-validated (`TaskExtractionValidator`) before use. Unknown fields invalidate the whole output.
+- Every effect goes through `AgentOrchestrator.execute`: tool allowlist (`ToolRegistry`) → argument validation →
+  `ToolAuthorizationPolicy` → Android permission → tool → verification → audit. Never call a repository write
+  from UI code directly.
+- Risk levels follow the master document (L0–L4). L3/L4 always need a `UserConfirmation` created from a user tap.
+  `data.export` and `data.deleteAll` are not agent-proposable. Never let model output create a `UserConfirmation`.
+- Locked feature flags (`cloud_ai`, `cloud_sync`, `accounts`, `analytics`, `external_integrations`) must stay locked.
+- Audit entries never contain task titles, memory content or raw user text.
+- Memory written by the assistant starts as PROPOSED; only a user action activates it (`MemoryPolicy`).
+- Never weaken a test, a validator, the policy or the manifest checks to make CI pass. Fix the cause.
+- Database changes: bump `MdcDatabase.VERSION`, add a `Migration`, commit the exported schema. No destructive fallback.
+- New dependency: add it to `gradle/libs.versions.toml` and to `docs/prebuild/11-dependency-license-inventory.md`
+  with its licence. Only Apache-2.0 / MIT / BSD / EPL-2.0 (test-only) are pre-approved.
+- New Android permission: justify it in `docs/prebuild/06-permission-model.md` and add it to the allowlist in
+  `app/src/test/.../ManifestSecurityTest.kt` in the same change.
+- Changing a prompt or the extractor: bump its version and keep the golden evaluation (`tests/testdata/golden`) green.
+- Ambiguous requirement → add a NEEDS DECISION item to `docs/prebuild/12-open-questions.md` instead of guessing.
+
+Local checks before every PR (the Android equivalent of `npm run check`):
+
+```bash
+./gradlew :domain:test :data:testDebugUnitTest :app:testDebugUnitTest lintDebug :app:assembleDebug
+```
+
+---
+
 # Standing rules for every Equisteg product built from this template
 
 ## Commands (the only six a founder needs)

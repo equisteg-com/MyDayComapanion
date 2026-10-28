@@ -5,9 +5,9 @@ name: CI
 # de-duplicated and time-limited.
 on:
   pull_request:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
   push:
-    branches: [development, staging, production]
+    branches: [main, development, staging, production]
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -38,6 +38,8 @@ jobs:
       - run: npm run build --if-present
       # SEO audit of the static export (phase 5: apps/web/scripts/seo-audit.mjs); skipped until the web app exists
       - run: npm run seo:audit --workspaces --if-present
+        # npm exits 1 when apps/* and packages/* hold no package yet (native Android product; see CLAUDE.md).
+        if: hashFiles('apps/*/package.json', 'packages/*/package.json') != ''
       - name: Secret scan of the built web bundle (Gitleaks, no git history)
         if: hashFiles('apps/web/out/index.html') != ''
         run: docker run --rm -v "$PWD/apps/web/out:/out" ghcr.io/gitleaks/gitleaks:latest detect --no-git --source /out --redact --exit-code 1

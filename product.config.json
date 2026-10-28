@@ -1,0 +1,62 @@
+{
+  "$comment": "Product profile validated by /precheck on 2026-10-06 (see docs/prebuild/03-architecture-decision.md). Changing a value here requires a founder-approved decision.",
+  "product": "MyDayCompanion",
+  "previous_name": "MyDayGuide",
+  "name_status": "provisional",
+  "type": "personal_ai_assistant",
+  "application_id": "com.equisteg.mydaycompanion",
+  "platforms": [
+    "android"
+  ],
+  "primary_platform": "android",
+  "stack": "kotlin-compose",
+  "min_sdk": 26,
+  "target_sdk": 36,
+  "architecture": "local-first",
+  "backend": false,
+  "backend_required": false,
+  "cloud_ai": false,
+  "ai_required": true,
+  "ai_mode": "local_first",
+  "local_ai": true,
+  "ai_fallback": "deterministic-rules",
+  "account_required": false,
+  "local_database": "room",
+  "database_encryption": "sqlcipher",
+  "encryption": "android-keystore",
+  "storage_required": "local",
+  "data_sensitivity": "high",
+  "offline_required": true,
+  "network_permission": false,
+  "agent": true,
+  "voice": true,
+  "calendar": "read-only",
+  "payments": "future",
+  "payment_required": false,
+  "analytics": "none",
+  "analytics_policy": "privacy_minimal",
+  "crash_reporting": "play-console-only",
+  "cost_ceiling_monthly_inr": 0,
+  "precheck_required": true,
+  "current_phase": "phase-0-internal-foundation",
+  "branches": {
+    "feature": "feature/*",
+    "development": "development (default)",
+    "staging": "staging",
+    "production": "production"
+  },
+  "template": "equisteg product template (this repository); stack overridden per docs/prebuild/03-architecture-decision.md",
+  "distribution": {
+    "store": "google-play",
+    "package_name": "com.equisteg.mydaycompanion",
+    "tracks": [
+      "internal",
+      "closed-alpha",
+      "closed-beta",
+      "production"
+    ],
+    "store_account_status": "not-registered",
+    "signing": "Play App Signing; upload key held offline by a founder, never in Git",
+    "privacy_policy_url": null
+  }
+}

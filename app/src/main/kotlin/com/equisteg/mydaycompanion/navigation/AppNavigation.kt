@@ -1,0 +1,100 @@
+package com.equisteg.mydaycompanion.navigation
+
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.equisteg.mydaycompanion.domain.security.ApprovalStep
+import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.UiState
+import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
+import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
+import com.equisteg.mydaycompanion.ui.screens.LockScreen
+import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
+import com.equisteg.mydaycompanion.ui.screens.PlanScreen
+import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
+
+enum class Destination(val label: String, val icon: ImageVector) {
+    PLAN("My day", Icons.Filled.DateRange),
+    HISTORY("History", Icons.Filled.Info),
+    SETTINGS("Settings", Icons.Filled.Settings),
+}
+
+@Composable
+fun AppNavigation(viewModel: MainViewModel) {
+    var current by rememberSaveable { mutableStateOf(Destination.PLAN) }
+    val state by viewModel.state.collectAsStateWithLifecycle()
+
+    if (state.locked) {
+        Scaffold { padding -> LockScreen(state, viewModel::onUnlockRequested, viewModel::onPanicWipe, Modifier.padding(padding)) }
+        state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
+        return
+    }
+
+    if (state.showOnboarding) {
+        Scaffold { padding -> OnboardingScreen(state, viewModel::onFinishOnboarding, viewModel::onSaveChallenges, Modifier.padding(padding)) }
+        ApprovalDialogs(viewModel, state)
+        return
+    }
+
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                Destination.entries.forEach { d ->
+                    NavigationBarItem(
+                        selected = current == d,
+                        onClick = {
+                            current = d
+                            if (d == Destination.HISTORY) viewModel.refreshHistory()
+                        },
+                        icon = { Icon(d.icon, contentDescription = null) },
+                        label = { Text(d.label) },
+                        modifier = Modifier.testTag("nav-${d.name}"),
+                    )
+                }
+            }
+        },
+    ) { padding ->
+        val modifier = Modifier.padding(padding)
+        when (current) {
+            Destination.PLAN -> PlanScreen(viewModel, modifier)
+            Destination.HISTORY -> HistoryScreen(state.history, modifier)
+            Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
+        }
+    }
+
+    ApprovalDialogs(viewModel, state)
+}
+
+/** The challenge question and the Confirm step of a pending approval, shown over any screen. */
+@Composable
+private fun ApprovalDialogs(viewModel: MainViewModel, state: UiState) {
+    state.challenge?.let { ChallengeDialog(it, state.busy, viewModel::onChallengeAnswer, viewModel::onCancelChallenge) }
+
+    state.pending?.takeIf { it.steps.firstOrNull() == ApprovalStep.TAP }?.let { pending ->
+        AlertDialog(
+            onDismissRequest = viewModel::onCancelPending,
+            title = { Text(pending.title) },
+            text = { Text(pending.body) },
+            confirmButton = { TextButton(onClick = viewModel::onConfirmPending, modifier = Modifier.testTag("confirm")) { Text("Confirm") } },
+            dismissButton = { TextButton(onClick = viewModel::onCancelPending) { Text("Cancel") } },
+        )
+    }
+}

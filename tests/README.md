@@ -19,3 +19,17 @@ Before testing, `node tests/tools/preflight.mjs` lists every tool, repo setting 
 
 Naming: every test title or flow name starts with its TC ID (`TC-W-001 …`, `TC-N-004 … @nfr`) so results map to test cases and bugs.
 Never put real customer data, live keys or production URLs in `testdata/`.
+
+## MyDayCompanion (native Android)
+
+Module tests live next to the code (`*/src/test`). This folder holds what is shared or not code:
+
+| Folder | Contents |
+|---|---|
+| `testdata/golden/` | Golden AI evaluation datasets with thresholds (run by `domain` `GoldenEvaluationTest`). |
+| `cases/` | `test-cases.xlsx` (template sheet; Android rows are `TC-M-1xx` and `TC-N-1xx`) plus manual device cases `TC-M-<n>-*.md`. |
+| `bugs/` | `bug-log.xlsx` (template), filled by `/test`. |
+| `security/` | Security test plan and manual penetration checklists. |
+| `ai-evals/` | Evaluation reports kept for comparison across model/prompt versions. |
+| `device/` | Device-matrix results. |
+| `tools/` | Test helper scripts. |

@@ -1,0 +1,62 @@
+# 04 — Data map and privacy
+
+| ID | Check | Status | Evidence / resolution |
+|---|---|---|---|
+| DM-01 | Data inventory complete | PASS | Table below matches `data/.../db/Entities.kt`. |
+| DM-02 | Data classification complete | PASS | Column "Class". |
+| DM-03 | Local storage policy | PASS | All data in one SQLCipher DB + one wrapped key file. No SharedPreferences, no external storage. |
+| DM-04 | Encryption design | PASS | 03 AR-04. |
+| DM-05 | Local-first behaviour verified | PASS | No INTERNET permission (`ManifestSecurityTest`, CI APK check). |
+| DM-06 | Network calls explicitly listed | PASS | None in V1 (§Network). |
+| DM-07 | Sensitive data paths identified | PASS | §Sensitive paths. |
+| DM-08 | Retention policy defined | PASS | Column "Retention". Audit/memory pruning job is Phase 1 work. |
+| DM-09 | Deletion policy defined | PASS | §Deletion; `PrivacyTest`, `RoomStorageTest`. |
+| DM-10 | Export path defined | PASS | §Export. |
+| DM-11 | No mandatory account | PASS | No account code; `accounts` flag locked off. |
+| DM-12 | No silent upload | PASS | No network path exists. |
+| DM-13 | Backup/privacy behaviour reviewed | PASS | `allowBackup=false`; `data_extraction_rules.xml` excludes all domains from cloud backup and device transfer; key in `noBackupFilesDir`. |
+| DM-14 | Logging of private payloads | PASS | No `Log` calls with user content; audit stores no titles/text (`AgentOrchestratorTest`). |
+
+## Inventory
+
+| Store (table) | Fields | Class | Source | Retention | Export | Delete |
+|---|---|---|---|---|---|---|
+| tasks | title, priority, duration, date, deadline, status, parentId, timestamps | Personal | User text / extraction | Until user deletes | Yes | Yes |
+| fixed_events | title, date, start, duration, source | Personal | User text; calendar (Phase 1, read-only, not copied unless planned) | Until user deletes | Yes | Yes |
+| plans, plan_blocks | date, block titles/times, issues, planner version | Personal | Planner | Until user deletes | Yes | Yes |
+| routines | title, frequency, preferred start, duration | Personal | User | Until user deletes | Yes | Yes |
+| memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User or assistant proposal | Per item: 1 d / 30 d / 365 d / until deleted | Yes | Yes |
+| audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days (pruning Phase 1) | Yes | Yes |
+| preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
+| db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |
+| Keystore key | AES-256 wrapping key | Secret | AndroidKeyStore | Life of install | Never extractable | Removed on uninstall |
+
+Voice audio (Phase 1) is never stored; only the recognised text enters the pipeline as user input.
+
+## Sensitive paths
+
+1. Free text → extractor/model: may contain anything (health, finance). Stays in memory, normalised, never logged.
+2. Memories: assistant cannot store SENSITIVE items; sensitive memories are excluded from model context.
+3. Export file: plaintext JSON in a location the user chooses. The confirmation dialog says so.
+4. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
+
+## Network
+
+V1 has **no network path**. The manifest removes `INTERNET` and `ACCESS_NETWORK_STATE` even if a library adds them,
+and CI fails if the built APK requests either. Any future network capability must document purpose,
+destination, data sent/received, retention, consent, failure behaviour, privacy implication and cost (master §20)
+and pass a founder decision.
+
+Note for Phase 1 voice: Android's default `SpeechRecognizer` may route audio to a cloud service inside another
+app's process, which would be an indirect network path. Voice must use the on-device recognizer only (07 AI-12).
+
+## Export
+
+Settings → Export all data → system file picker (no storage permission) → confirmation (L3) → JSON
+(`mydaycompanion-export`, schema v1) with every table and preferences → verified by byte count → audited.
+
+## Deletion
+
+Settings → Delete everything → confirmation (L4) → every `ErasableStore` cleared → reminders cancelled →
+each store re-counted; success only if all are zero → one non-personal audit receipt (`data.deleteAll`) remains.
+SQLite `secure_delete` is on, so freed pages are overwritten. Uninstalling removes the DB, key file and Keystore key.
