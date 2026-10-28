@@ -1,14 +1,18 @@
 # Progress
 
-## 2026-10-28 — Test APK installs on vivo / iQOO phones (FIX-001)
+## 2026-10-28 — Test APK installs on vivo / iQOO phones (CHG-003)
 
 - The founder's iQOO Z5 (Android 13) said "The app wasn't installed" even after a full uninstall. The new
-  build-log diagnostics showed the APK was signed with the v2 scheme only (minSdk 26 drops v1); vivo-family
-  installers reject that. Debug builds now carry v1 and v2 signatures.
+  build-log diagnostics showed the APK was signed with the v2 scheme only (minSdk 26 drops v1), which some
+  vivo-family installers reject. That is the likely cause, confirmed once the phone installs the new build; nothing
+  else in the diagnostics (SDK levels, CPU types, no test-only flag) would block it. Debug builds now carry v1 and v2.
 - The same log showed CHG-002's cache saved nothing ("path does not exist"): the debug key was not at
   `~/.android/debug.keystore` on the runner. CI now makes the key at `~/.mdc/debug.keystore` and passes that path to
   Gradle (`MDC_DEBUG_KEYSTORE`), so the cache and the build use the same file. Local builds are unchanged.
-- NEEDS HUMAN: install the next build on the iQOO and confirm.
+- The cache is per branch, so the first `development` build after the merge makes the shared key: uninstall the test
+  build once more after that, then later `development` builds install over each other.
+- NEEDS HUMAN: install the build on the iQOO and confirm. If it still fails, `adb install -r app-debug.apk` from a
+  computer prints the exact `INSTALL_FAILED_*` reason.
 
 ## 2026-10-28 — Test builds install over each other (CHG-002)
 
