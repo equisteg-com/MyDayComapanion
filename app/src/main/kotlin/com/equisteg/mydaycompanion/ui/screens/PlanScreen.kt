@@ -69,6 +69,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val dayCount = remember(tasks, state.selectedDate) { DayInsights.of(tasks, state.selectedDate).today }
     val leftOver = remember(tasks, today) {
         tasks.count { RollOverTasksTool.movable(it, today) && it.date!! >= today.minusDays(MainViewModel.ROLL_OVER_DAYS) }
+            .coerceAtMost(RollOverTasksTool.MAX_TASKS)
     }
     // Keeps the last proposal on screen while its card animates away.
     var shownProposal by remember { mutableStateOf(state.proposal) }

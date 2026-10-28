@@ -43,6 +43,7 @@ class AgentCommandsTest {
         assertEquals(AgentCommand.Move("call Raj", null, LocalTime.of(16, 0)), parse("push call Raj to 4pm"))
         assertEquals(AgentCommand.Move("dentist", today.plusDays(1), LocalTime.of(15, 0)), parse("Reschedule my dentist to tomorrow 3pm"))
         assertEquals(AgentCommand.Move("report", today.plusDays(1), null), parse("postpone the report"))
+        assertEquals(AgentCommand.Move("report", today.plusDays(1), null), parse("Postpone The report"))
         assertEquals(AgentCommand.Move("work on report", LocalDate.of(2026, 10, 9), null), parse("move work on report to friday"))
         assertEquals(AgentCommand.Move("gym", today.plusDays(1), null), parse("move gym tomorrow"))
     }
@@ -120,6 +121,13 @@ class AgentCommandsTest {
         assertIs<ExecutionResult.Failed>(g.orchestrator.execute(sneaky, Requester.USER))
         val junk = ProposedAction("tasks.rollOver", JsonObject(mapOf("to" to JsonPrimitive("soon"), "taskIds" to JsonPrimitive("y1"))))
         assertTrue(g.orchestrator.execute(junk, Requester.USER) !is ExecutionResult.Done)
+        // Only to today or the next two weeks: never into the past or far ahead.
+        g.tasks.upsert(listOf(Task("y4", "Old", date = yesterday.minusDays(1), createdAt = at)))
+        for (to in listOf(yesterday, today.plusDays(RollOverTasksTool.MAX_DAYS_AHEAD + 1))) {
+            val far = ProposedAction("tasks.rollOver", JsonObject(mapOf("to" to JsonPrimitive(to.toString()), "taskIds" to JsonPrimitive("y4"))))
+            assertTrue(g.orchestrator.execute(far, Requester.USER) !is ExecutionResult.Done, "to=$to")
+        }
+        assertEquals(yesterday.minusDays(1), g.tasks.get("y4")?.date)
     }
 }
 

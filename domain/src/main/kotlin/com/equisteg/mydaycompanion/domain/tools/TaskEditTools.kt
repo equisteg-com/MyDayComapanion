@@ -294,7 +294,7 @@ class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Cl
         riskLevel = RiskLevel.L2,
         agentProposable = true,
         confirmation = Confirmation.WHEN_PROPOSED_BY_AGENT,
-        verification = "Re-read every listed task and check it is on the new day.",
+        verification = "Re-read every listed task and its steps and check they are on the new day.",
     )
 
     private fun parse(args: JsonObject): Pair<LocalDate, List<String>>? {
@@ -310,6 +310,8 @@ class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Cl
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val (to, ids) = parse(args) ?: return ToolOutcome.Failure("INVALID")
         val now = clock.instant()
+        val today = LocalDate.now(clock)
+        if (to < today || to > today.plusDays(MAX_DAYS_AHEAD)) return ToolOutcome.Failure("INVALID_DATE")
         val all = tasks.all()
         val roots = ids.map { id -> all.firstOrNull { it.id == id } ?: return ToolOutcome.Failure("NOT_FOUND") }
         if (roots.any { !movable(it, to) }) return ToolOutcome.Failure("NOT_MOVABLE")
@@ -322,7 +324,7 @@ class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Cl
 
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
         val (to, ids) = parse(args) ?: return false
-        return ids.all { tasks.get(it)?.date == to }
+        return ids.all { id -> tasks.get(id)?.date == to && tasks.all().filter { it.parentId == id }.all { it.date == to } }
     }
 
     override suspend fun touchesPersonal(args: JsonObject): Boolean =
@@ -330,6 +332,9 @@ class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Cl
 
     companion object {
         const val MAX_TASKS = 50
+
+        /** Tasks roll over to today or a day soon after it, never into the past or far ahead. */
+        const val MAX_DAYS_AHEAD = 14L
         private val ID = Regex("[A-Za-z0-9_:-]{1,64}")
 
         /** An open, top-level, non-routine task planned before [to]. */

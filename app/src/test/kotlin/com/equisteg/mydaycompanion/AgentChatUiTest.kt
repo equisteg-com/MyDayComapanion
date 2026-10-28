@@ -14,6 +14,7 @@ import com.equisteg.mydaycompanion.domain.model.PlanBlock
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
+import com.equisteg.mydaycompanion.domain.security.SecuritySettings
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
 import com.equisteg.mydaycompanion.ui.AuthOutcome
 import com.equisteg.mydaycompanion.ui.MainViewModel
@@ -81,12 +82,14 @@ class AgentChatUiTest {
         }
         val vm = MainViewModel(services, Dispatchers.Unconfined)
         compose.setContent { PlanScreen(vm) }
+        vm.onInputChange("buy milk")
 
         compose.onNodeWithTag("ask-0").performScrollTo().performClick()
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("chat-agent") and hasText("Now: Write report, until 08:00. Next: Call Raj at 09:00.")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("ask-1").performScrollTo().performClick()
         compose.waitUntil(5_000) { vm.state.value.chat.lastOrNull()?.text == "0 of 2 done. Still to do: Write report, Call Raj." }
         assertTrue(graph.audit.entries.none { "Write report" in it.detail.orEmpty() }, "chat is never written to History")
+        assertEquals("buy milk", vm.state.value.input, "a quick question keeps what the owner was typing")
     }
 
     @Test
@@ -102,6 +105,53 @@ class AgentChatUiTest {
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("a")?.date } == friday }
         assertNull(vm.state.value.suggestion)
         assertTrue(graph.audit.entries.any { it.action == "tasks.update" })
+    }
+
+    @Test
+    fun `a move card never writes back over a later edit`() {
+        seed(task("a", "Call Raj"))
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        vm.say("move call raj to friday")
+        assertNotNull(vm.state.value.suggestion)
+        // The owner marks the task personal after the card appeared.
+        runBlocking { graph.tasks.upsert(listOf(graph.tasks.get("a")!!.copy(personal = true, notes = "pharmacy"))) }
+        vm.onAcceptSuggestion()
+        idle()
+        val stored = runBlocking { graph.tasks.get("a") }!!
+        assertEquals(today, stored.date)
+        assertTrue(stored.personal)
+        assertEquals("pharmacy", stored.notes)
+        assertEquals("That task changed since I offered this, so I left it. Ask me again.", vm.lastReply())
+    }
+
+    @Test
+    fun `the app lock ends a focus session and clears the chat`() {
+        seed(task("a", "Write report"))
+        runBlocking { graph.security.saveSettings(SecuritySettings(appLockEnabled = true, lockAfterMinutes = 0)) }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        idle()
+        assertNotNull(vm.state.value.authRequest, "unlock prompt")
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        idle()
+        assertTrue(!vm.state.value.locked)
+        vm.say("focus 30 min on report")
+        assertNotNull(vm.state.value.focus)
+        vm.onAppBackground()
+        vm.onAppForeground()
+        idle()
+        assertTrue(vm.state.value.locked)
+        assertNull(vm.state.value.focus)
+        assertTrue(vm.state.value.chat.isEmpty())
+        vm.onFocusTick()
+        assertNull(vm.state.value.suggestion)
+    }
+
+    @Test
+    fun `a time-only move of an overdue task brings it to today`() {
+        seed(task("o", "Send invoice", date = today.minusDays(2)))
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        vm.say("push invoice to 4pm")
+        assertEquals("Move \"Send invoice\" to today at 16:00?", vm.state.value.suggestion?.text)
     }
 
     @Test
@@ -140,6 +190,11 @@ class AgentChatUiTest {
         compose.setContent { PlanScreen(vm) }
         compose.onNodeWithTag("rollover").assertTextContains("1 unfinished task from an earlier day")
         compose.onNodeWithTag("rollover-accept").performClick()
+        // The banner only shows what would move; nothing moves until the card's Move tap.
+        compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("suggestion")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("suggestion").assertTextContains("Move to today: \"Finish slides\"?")
+        assertEquals(today.minusDays(1), runBlocking { graph.tasks.get("y")?.date })
+        compose.onNodeWithTag("suggestion-accept").performClick()
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("y")?.date } == today }
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("rollover")).fetchSemanticsNodes().isEmpty() }
     }

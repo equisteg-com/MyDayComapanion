@@ -146,7 +146,7 @@ fun RollOverBanner(count: Int, busy: Boolean, onMove: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onMove, enabled = !busy, modifier = Modifier.testTag("rollover-accept")) { Text("Move to today") }
+            TextButton(onClick = onMove, enabled = !busy, modifier = Modifier.testTag("rollover-accept")) { Text("Review") }
         }
     }
 }

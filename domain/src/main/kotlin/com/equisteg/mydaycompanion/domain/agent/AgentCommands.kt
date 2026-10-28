@@ -68,7 +68,7 @@ class AgentCommandParser(dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONT
             val start = listOfNotNull(date?.range?.first, time?.range?.first).minOrNull()
             if (start == null) rest to "" else rest.substring(0, start).trim() to rest.substring(start).trim()
         }
-        val cleanQuery = query.removePrefix("my ").removePrefix("the ").trim()
+        val cleanQuery = query.replace(leadingArticle, "").trim()
         if (cleanQuery.isEmpty()) return null
         val date = dates.findAll(destination, today).firstOrNull()?.date
         val time = TimeParser.findAll(destination, now).firstOrNull { it.role == TimeRole.AT }?.start
@@ -98,6 +98,7 @@ class AgentCommandParser(dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONT
             i,
         )
         private val moveVerb = Regex("^(move|reschedule|push( back)?|shift|postpone|put off|put)\\s", i)
+        private val leadingArticle = Regex("^(my|the)\\s+", i)
         private val destinationSplit = Regex("\\s(to|till|until|for|on|onto)\\s(?!.*\\s(to|till|until|onto)\\s)", i)
     }
 }
@@ -135,7 +136,7 @@ object TaskMatcher {
 
 /** The agent's answers in the chat, worked out on the phone from the plan and tasks (UPD-011). */
 object AgentReplies {
-    private val dayName = java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM")
+    private val dayName = java.time.format.DateTimeFormatter.ofPattern("EEEE d MMMM", java.util.Locale.ENGLISH)
 
     fun whatsNext(plan: com.equisteg.mydaycompanion.domain.model.DayPlan?, tasks: List<Task>, now: LocalTime): String {
         val nn = com.equisteg.mydaycompanion.domain.insights.DayInsights.nowNext(plan, tasks, now)
