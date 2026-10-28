@@ -56,8 +56,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
     val backlog = tasks.filter { it.date == null }.sortedBy { it.createdAt }
-    val today = viewModel.today()
-    val now = viewModel.nowTime()
+    // Ticks each minute, so Now / Next, the greeting and "today" stay right while My day is open.
+    val now by viewModel.minute.collectAsStateWithLifecycle()
+    val today = remember(now) { viewModel.today() }
     val isToday = state.selectedDate == today
     val insights = remember(tasks, today) { DayInsights.of(tasks, today) }
     val dayCount = remember(tasks, state.selectedDate) { DayInsights.of(tasks, state.selectedDate).today }
@@ -129,7 +130,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
-        item {
+        if (shownProposal != null) item {
             AnimatedVisibility(
                 visible = state.proposal != null,
                 enter = fadeIn() + expandVertically(),

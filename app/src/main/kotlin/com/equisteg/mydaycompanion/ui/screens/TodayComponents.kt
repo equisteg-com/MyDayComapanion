@@ -69,8 +69,11 @@ fun ProgressRing(fraction: Float, modifier: Modifier = Modifier, label: @Composa
     Box(modifier.size(84.dp), contentAlignment = Alignment.Center) {
         Canvas(Modifier.size(84.dp)) {
             val stroke = 9.dp.toPx()
-            drawArc(track, startAngle = -90f, sweepAngle = 360f, useCenter = false, style = Stroke(stroke))
-            drawArc(fill, startAngle = -90f, sweepAngle = 360f * progress, useCenter = false, style = Stroke(stroke, cap = StrokeCap.Round))
+            // Inset by half the stroke so the ring stays inside its box.
+            val inset = Offset(stroke / 2, stroke / 2)
+            val ring = androidx.compose.ui.geometry.Size(size.width - stroke, size.height - stroke)
+            drawArc(track, startAngle = -90f, sweepAngle = 360f, useCenter = false, topLeft = inset, size = ring, style = Stroke(stroke))
+            drawArc(fill, startAngle = -90f, sweepAngle = 360f * progress, useCenter = false, topLeft = inset, size = ring, style = Stroke(stroke, cap = StrokeCap.Round))
         }
         label()
     }
@@ -214,7 +217,7 @@ fun InsightsCard(insights: Insights, modifier: Modifier = Modifier) {
         colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
     ) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Your week", style = MaterialTheme.typography.titleMedium)
+            Text("Your last 7 days", style = MaterialTheme.typography.titleMedium)
             val maxPlanned = insights.week.maxOf { maxOf(it.planned, 1) }
             Row(Modifier.fillMaxWidth().height(96.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
                 insights.week.forEach { day ->
@@ -242,7 +245,7 @@ fun InsightsCard(insights: Insights, modifier: Modifier = Modifier) {
             }
             Text(
                 listOfNotNull(
-                    "${insights.doneThisWeek} done this week",
+                    "${insights.doneThisWeek} done in the last 7 days",
                     insights.streakDays.takeIf { it > 0 }?.let { if (it == 1) "1-day streak" else "$it-day streak" },
                     insights.doneMinutesToday.takeIf { it > 0 }?.let { "$it min finished today" },
                 ).joinToString(" · "),

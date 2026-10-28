@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
@@ -510,6 +511,20 @@ class MainViewModel(
     /** The phone's date and time, from the same clock the planner uses (tests fix it). */
     fun today(): LocalDate = LocalDate.now(services.clock)
     fun nowTime(): LocalTime = LocalTime.now(services.clock).truncatedTo(ChronoUnit.MINUTES)
+
+    private val _minute = MutableStateFlow(nowTime())
+
+    /** The current minute, refreshed at each minute boundary while the app runs (for Now / Next and the greeting). */
+    val minute: StateFlow<LocalTime> = _minute.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            while (true) {
+                delay(MINUTE_MS - services.clock.millis() % MINUTE_MS)
+                _minute.value = nowTime()
+            }
+        }
+    }
 
     fun selectDate(date: LocalDate) {
         selectedDate.value = date
@@ -1030,6 +1045,8 @@ class MainViewModel(
     companion object {
         /** Newest entries loaded for History; the filters apply to these. */
         const val HISTORY_SHOWN = 300
+
+        private const val MINUTE_MS = 60_000L
 
         /** Wrong backup passphrases in a row before Restore closes for [RESTORE_LOCK] (build doc §7.3). */
         const val MAX_RESTORE_FAILURES = 10

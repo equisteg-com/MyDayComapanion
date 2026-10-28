@@ -4,10 +4,11 @@
 
 - A new palette ("calm dawn": deep teal for tasks, apricot for fixed events, violet for the agent), rounder shapes
   and stronger headings. Settings → Appearance: Match phone / Light / Dark, and "Use wallpaper colours" on
-  Android 12+. The look is read before the first frame, so there is no flash.
+  Android 12+. The look is read before the first frame, the window behind it follows the phone's light or
+  dark mode, and the status and navigation bar icons follow the app's theme.
 - My day: a greeting and date with ‹ › and a Today chip; the input in its own card with the agent's reply as a
   bubble; a top card with a progress ring ("2 of 5 done") and, for today, Now / Next; the plan as a colour-coded
-  timeline where the block running now is marked and done tasks fade and strike through; "Your week" with seven
+  timeline where the block running now is marked and done tasks fade and strike through; "Your last 7 days" with seven
   bars, the streak and minutes finished today. Insights are worked out on the phone from the task list; nothing
   new is stored.
 - Motion: the proposal card slides in and out, the ring and bars animate, tabs cross-fade.
