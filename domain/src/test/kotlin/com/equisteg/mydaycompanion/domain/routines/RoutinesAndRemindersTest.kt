@@ -178,6 +178,17 @@ class RoutinesAndRemindersTest {
     }
 
     @Test
+    fun `materialize still verifies when the owner moved a routine task to another day`() = runTest {
+        val g = TestGraph()
+        g.routines.upsert(routine("r1", RoutineFrequency.DAILY))
+        g.routines.upsert(routine("r2", RoutineFrequency.DAILY, title = "Read"))
+        g.tasks.upsert(listOf(Task(id = RoutineExpander.taskId("r1", tuesday), title = "Gym", date = tuesday.plusDays(1), createdAt = created, routineId = "r1")))
+        val r = g.orchestrator.execute(ProposedAction("routines.materialize", args("date" to tuesday.toString())), Requester.SYSTEM)
+        assertIs<ExecutionResult.Done>(r)
+        assertEquals(1, g.tasks.all().count { it.routineId == "r2" && it.date == tuesday })
+    }
+
+    @Test
     fun `system runs are limited to quiet L1 tools and audited as the system`() = runTest {
         val g = TestGraph()
         val materialize = ProposedAction("routines.materialize", args("date" to tuesday.toString()))

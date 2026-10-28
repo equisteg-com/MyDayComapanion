@@ -17,6 +17,7 @@ import com.equisteg.mydaycompanion.MyDayCompanionApp
 import com.equisteg.mydaycompanion.R
 import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
+import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.reminders.ReminderKind
 import kotlinx.coroutines.CoroutineScope
@@ -38,7 +39,7 @@ class ReminderReceiver : BroadcastReceiver() {
         scope.launch {
             try {
                 when (intent.action) {
-                    ACTION_SHOW -> show(context, intent)
+                    ACTION_SHOW -> show(context, app, intent)
                     ACTION_SNOOZE -> snooze(context, intent)
                     ACTION_DONE -> done(context, app, intent.getStringExtra(EXTRA_TASK_ID), intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
                     ACTION_MAINTENANCE,
@@ -54,13 +55,15 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun show(context: Context, intent: Intent) {
+    private suspend fun show(context: Context, app: MyDayCompanionApp, intent: Intent) {
         if (!canNotify(context)) return
         ensureChannels(context)
         val kind = intent.getStringExtra(EXTRA_KIND)?.let { k -> ReminderKind.entries.firstOrNull { it.name == k } } ?: return
         val title = intent.getStringExtra(EXTRA_TITLE).orEmpty()
         val body = intent.getStringExtra(EXTRA_BODY).orEmpty()
         val taskId = intent.getStringExtra(EXTRA_TASK_ID)
+        // A task finished, skipped or deleted (including by a wipe) since the alarm was set is not reminded.
+        if (kind == ReminderKind.TASK && (taskId == null || app.services.tasks.get(taskId)?.status != TaskStatus.OPEN)) return
         val id = intent.dataString.hashCode()
         val open = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
@@ -100,16 +103,10 @@ class ReminderReceiver : BroadcastReceiver() {
         NotificationManagerCompat.from(context).notify(id, builder.build())
     }
 
-    /**
-     * The owner tapped "In 10 min": the same reminder shows again later. One-off: the next full sync
-     * replaces it only if the task's own reminder changes, which is fine because a snooze is short.
-     */
+    /** The owner tapped "In 10 min": the same reminder shows again later, registered so a wipe cancels it. */
     private fun snooze(context: Context, intent: Intent) {
         NotificationManagerCompat.from(context).cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
-        val again = Intent(intent).setAction(ACTION_SHOW).setData(android.net.Uri.parse("${intent.dataString}#snooze"))
-        val pi = PendingIntent.getBroadcast(context, 0, again, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        context.getSystemService(android.app.AlarmManager::class.java)
-            .setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + SNOOZE_MINUTES * 60_000L, pi)
+        AlarmNotificationScheduler.snooze(context, intent, System.currentTimeMillis() + SNOOZE_MINUTES * 60_000L)
     }
 
     /** The owner tapped Done. A personal task still needs the owner's verification, so that one opens the app instead. */

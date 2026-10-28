@@ -194,8 +194,13 @@ class MaterializeRoutinesTool(
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
         val date = parseDate(args.string("date"))!!
         val onDay = tasks.all().filter { it.date == date }.groupingBy { it.routineId }.eachCount()
-        // Same rule as RoutineExpander: a routine is covered by its own task or by any task with its title that day.
-        val titles = tasks.all().filter { it.date == date }.map { it.title.lowercase() }.toSet()
-        return routines.all().filter { it.isDueOn(date) }.all { (onDay[it.id] ?: 0) <= 1 && (onDay[it.id] == 1 || it.title.lowercase() in titles) }
+        // Same rule as RoutineExpander: covered by its own task that day, by any task with its title that day,
+        // or by its task for that day having been moved elsewhere by the owner.
+        val all = tasks.all()
+        val titles = all.filter { it.date == date }.map { it.title.lowercase() }.toSet()
+        val ids = all.map { it.id }.toSet()
+        return routines.all().filter { it.isDueOn(date) }.all {
+            (onDay[it.id] ?: 0) >= 1 || it.title.lowercase() in titles || RoutineExpander.taskId(it.id, date) in ids
+        }
     }
 }

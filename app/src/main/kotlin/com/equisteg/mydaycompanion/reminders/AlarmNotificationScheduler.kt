@@ -46,6 +46,7 @@ class AlarmNotificationScheduler(
     /** Also used by the panic wipe, which cannot suspend. Clears shown notifications too. */
     fun cancelEverything() {
         cancelReminders()
+        cancelSnoozes(context)
         androidx.core.app.NotificationManagerCompat.from(context).cancelAll()
         alarms.cancel(maintenanceIntent(PendingIntent.FLAG_UPDATE_CURRENT) ?: return)
     }
@@ -87,8 +88,35 @@ class AlarmNotificationScheduler(
 
     private fun uri(id: String): Uri = Uri.Builder().scheme("mdc-reminder").opaquePart(id).build()
 
-    private companion object {
-        const val PREFS = "reminder_alarms"
-        const val KEY_IDS = "ids"
+    companion object {
+        private const val PREFS = "reminder_alarms"
+        private const val KEY_IDS = "ids"
+        private const val KEY_SNOOZES = "snoozes"
+
+        /** A snoozed reminder: the same notification again at [atMillis]. Its id is recorded so [cancelEverything] can cancel it. */
+        fun snooze(context: Context, shown: Intent, atMillis: Long) {
+            val data = Uri.parse("${shown.dataString}#snooze")
+            val again = Intent(shown).setAction(ReminderReceiver.ACTION_SHOW).setData(data)
+            val pi = PendingIntent.getBroadcast(context, 0, again, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            prefs.edit { putStringSet(KEY_SNOOZES, prefs.getStringSet(KEY_SNOOZES, emptySet()).orEmpty() + data.toString()) }
+        }
+
+        private fun cancelSnoozes(context: Context) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            val alarms = context.getSystemService(AlarmManager::class.java)
+            for (data in prefs.getStringSet(KEY_SNOOZES, emptySet()).orEmpty()) {
+                val pi = PendingIntent.getBroadcast(
+                    context, 0, Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_SHOW).setData(Uri.parse(data)),
+                    PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+                )
+                if (pi != null) {
+                    alarms.cancel(pi)
+                    pi.cancel()
+                }
+            }
+            prefs.edit { remove(KEY_SNOOZES) }
+        }
     }
 }
