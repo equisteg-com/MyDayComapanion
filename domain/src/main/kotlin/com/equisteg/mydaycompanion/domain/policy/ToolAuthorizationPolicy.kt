@@ -6,8 +6,12 @@ import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import com.equisteg.mydaycompanion.domain.tools.ToolSpec
 import java.security.MessageDigest
 
-/** Who started an action. AGENT means the action came from a model/assistant proposal. */
-enum class Requester { USER, AGENT }
+/**
+ * Who started an action. AGENT means the action came from a model/assistant proposal. SYSTEM is the
+ * app's own scheduled work (nightly run, after a restart); it may only run L0/L1 tools that never
+ * need a confirmation, and it can never answer a confirmation.
+ */
+enum class Requester { USER, AGENT, SYSTEM }
 
 /** Grants are checked against the real Android permission system by the app layer. */
 fun interface PermissionChecker {
@@ -27,6 +31,7 @@ enum class DenyReason {
     PERMISSION_MISSING,
     NOT_AGENT_PROPOSABLE,
     CONFIRMATION_MISMATCH,
+    NOT_SYSTEM_RUNNABLE,
 }
 
 sealed interface PolicyDecision {
@@ -57,6 +62,9 @@ class ToolAuthorizationPolicy(
             return PolicyDecision.Deny(DenyReason.FEATURE_DISABLED, spec.featureFlag)
         }
         if (requester == Requester.AGENT && !spec.agentProposable) return PolicyDecision.Deny(DenyReason.NOT_AGENT_PROPOSABLE)
+        if (requester == Requester.SYSTEM && (spec.riskLevel > RiskLevel.L1 || spec.confirmation != Confirmation.NEVER)) {
+            return PolicyDecision.Deny(DenyReason.NOT_SYSTEM_RUNNABLE)
+        }
         if (!argsValid) return PolicyDecision.Deny(DenyReason.INVALID_ARGUMENTS)
         spec.androidPermissions.firstOrNull { !permissions.isGranted(it) }?.let {
             return PolicyDecision.Deny(DenyReason.PERMISSION_MISSING, it)
@@ -68,6 +76,7 @@ class ToolAuthorizationPolicy(
             personal ||
             (spec.confirmation == Confirmation.WHEN_PROPOSED_BY_AGENT && requester == Requester.AGENT)
         if (!needsConfirmation) return PolicyDecision.Allow
+        if (requester == Requester.SYSTEM) return PolicyDecision.Deny(DenyReason.NOT_SYSTEM_RUNNABLE)
         if (confirmation == null) return PolicyDecision.RequireConfirmation(fingerprint)
         if (confirmation.actionFingerprint != fingerprint) return PolicyDecision.Deny(DenyReason.CONFIRMATION_MISMATCH)
         return PolicyDecision.Allow

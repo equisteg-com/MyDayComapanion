@@ -212,7 +212,11 @@ class AgentOrchestrator(
             confirmation = confirmation,
             personal = personal,
         )
-        val actor = if (requester == Requester.USER) AuditActor.USER else AuditActor.AGENT
+        val actor = when (requester) {
+            Requester.USER -> AuditActor.USER
+            Requester.AGENT -> AuditActor.AGENT
+            Requester.SYSTEM -> AuditActor.SYSTEM
+        }
         val risk = tool?.spec?.riskLevel
         // Unknown tool ids come from untrusted output; never echo them into the audit log verbatim.
         val auditAction = if (tool == null) "unknown" else action.toolId

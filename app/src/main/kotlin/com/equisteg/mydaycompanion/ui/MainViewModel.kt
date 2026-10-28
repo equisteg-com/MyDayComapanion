@@ -155,17 +155,23 @@ class MainViewModel(
     /** The user reviewed the proposed tasks and plan and tapped "Add to my day". */
     fun onAcceptProposal() = launchBusy {
         val proposal = _state.value.proposal ?: return@launchBusy
+        var routineProblem: String? = null
         for (action in proposal.actions) {
             val result = runWithUserApproval(action, Requester.AGENT)
-            if (result !is ExecutionResult.Done) {
-                _state.update { it.copy(message = describe(result)) }
-                return@launchBusy
+            if (result is ExecutionResult.Done) continue
+            // The tasks are already saved by now; a routine that can't be saved must not leave the
+            // proposal on screen, or a second tap would add the tasks again.
+            if (action.toolId == "routines.create") {
+                routineProblem = "The tasks were added, but the repeat couldn't be saved (${describe(result).lowercase()})."
+                continue
             }
+            _state.update { it.copy(message = describe(result)) }
+            return@launchBusy
         }
         services.maintenance.run()
         selectDate(proposal.previewPlans.first().date)
         val days = proposal.previewPlans.size
-        _state.update { it.copy(proposal = null, input = "", message = if (days > 1) "Added to $days days." else "Added to your day.") }
+        _state.update { it.copy(proposal = null, input = "", message = routineProblem ?: if (days > 1) "Added to $days days." else "Added to your day.") }
     }
 
     /** Ticks a task done, or back to not done. */

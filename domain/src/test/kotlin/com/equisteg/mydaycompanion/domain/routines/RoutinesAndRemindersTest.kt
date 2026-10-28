@@ -18,10 +18,10 @@ import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
 import com.equisteg.mydaycompanion.domain.reminders.DailyBrief
 import com.equisteg.mydaycompanion.domain.reminders.ReminderKind
 import com.equisteg.mydaycompanion.domain.reminders.ReminderPlanner
-import com.equisteg.mydaycompanion.domain.testing.SequentialIds
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
 import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.SyncRemindersTool
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -63,19 +63,19 @@ class RoutinesAndRemindersTest {
     @Test
     fun `expander adds one task per due routine and never twice`() {
         val routines = listOf(routine("r1", RoutineFrequency.WEEKDAYS), routine("r2", RoutineFrequency.WEEKLY, DayOfWeek.FRIDAY, "Review"))
-        val first = RoutineExpander.tasksFor(tuesday, routines, emptyList(), SequentialIds(), created)
+        val first = RoutineExpander.tasksFor(tuesday, routines, emptyList(), created)
         assertEquals(listOf("r1"), first.map { it.routineId })
         assertEquals(LocalTime.of(7, 0), first.single().preferredStart)
-        assertTrue(RoutineExpander.tasksFor(tuesday, routines, first, SequentialIds(), created).isEmpty())
+        assertTrue(RoutineExpander.tasksFor(tuesday, routines, first, created).isEmpty())
     }
 
     @Test
     fun `a skipped routine task is not added back, and a same-title task counts as today's`() {
         val r = listOf(routine("r1", RoutineFrequency.DAILY))
         val skipped = Task(id = "x", title = "Gym", date = tuesday, createdAt = created, routineId = "r1", status = TaskStatus.CANCELLED)
-        assertTrue(RoutineExpander.tasksFor(tuesday, r, listOf(skipped), SequentialIds(), created).isEmpty())
+        assertTrue(RoutineExpander.tasksFor(tuesday, r, listOf(skipped), created).isEmpty())
         val typed = Task(id = "y", title = "gym", date = tuesday, createdAt = created)
-        assertTrue(RoutineExpander.tasksFor(tuesday, r, listOf(typed), SequentialIds(), created).isEmpty())
+        assertTrue(RoutineExpander.tasksFor(tuesday, r, listOf(typed), created).isEmpty())
     }
 
     // --- Routine tools through the orchestrator ---
@@ -150,7 +150,7 @@ class RoutinesAndRemindersTest {
         val result = if (needs is ExecutionResult.NeedsConfirmation) g.orchestrator.execute(del, Requester.USER, UserConfirmation(needs.actionFingerprint)) else needs
         assertIs<ExecutionResult.Done>(result)
         assertEquals(TaskStatus.CANCELLED, g.tasks.get("t")!!.status)
-        assertTrue(RoutineExpander.tasksFor(tuesday, g.routines.all(), g.tasks.all(), SequentialIds(), created).isEmpty())
+        assertTrue(RoutineExpander.tasksFor(tuesday, g.routines.all(), g.tasks.all(), created).isEmpty())
     }
 
     @Test
@@ -167,7 +167,36 @@ class RoutinesAndRemindersTest {
         }
         assertEquals(1, g.routines.count())
         val date = p.extraction.dates.first()
-        assertTrue(RoutineExpander.tasksFor(date, g.routines.all(), g.tasks.all(), SequentialIds(), created).isEmpty(), "no duplicate on the first day")
+        assertTrue(RoutineExpander.tasksFor(date, g.routines.all(), g.tasks.all(), created).isEmpty(), "no duplicate on the first day")
+    }
+
+    @Test
+    fun `a routine task the owner moved to another day is never overwritten`() {
+        val r = listOf(routine("r1", RoutineFrequency.DAILY))
+        val moved = Task(id = RoutineExpander.taskId("r1", tuesday), title = "Gym", date = tuesday.plusDays(1), createdAt = created, routineId = "r1")
+        assertTrue(RoutineExpander.tasksFor(tuesday, r, listOf(moved), created).isEmpty())
+    }
+
+    @Test
+    fun `system runs are limited to quiet L1 tools and audited as the system`() = runTest {
+        val g = TestGraph()
+        val materialize = ProposedAction("routines.materialize", args("date" to tuesday.toString()))
+        assertIs<ExecutionResult.Done>(g.orchestrator.execute(materialize, Requester.SYSTEM))
+        assertEquals(com.equisteg.mydaycompanion.domain.audit.AuditActor.SYSTEM, g.audit.all().last().actor)
+        val create = ProposedAction("routines.create", args("title" to "Gym", "frequency" to "DAILY", "durationMinutes" to 30))
+        assertEquals(ExecutionResult.Denied("NOT_SYSTEM_RUNNABLE"), g.orchestrator.execute(create, Requester.SYSTEM))
+        val fp = g.orchestrator.fingerprint(create)
+        assertEquals(ExecutionResult.Denied("NOT_SYSTEM_RUNNABLE"), g.orchestrator.execute(create, Requester.SYSTEM, UserConfirmation(fp)))
+        assertEquals(0, g.routines.count())
+    }
+
+    @Test
+    fun `overlapping maintenance runs add each routine task once`() = runTest {
+        val g = TestGraph(clock = java.time.Clock.fixed(early, ZoneOffset.UTC))
+        g.routines.upsert(routine("r1", RoutineFrequency.DAILY))
+        val m = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(g.orchestrator, g.tasks, g.plans, g.routines, g.clock)
+        kotlinx.coroutines.coroutineScope { repeat(3) { launch { m.run() } } }
+        assertEquals(1, g.tasks.all().count { it.routineId == "r1" && it.date == tuesday })
     }
 
     // --- Reminders ---
@@ -217,6 +246,9 @@ class RoutinesAndRemindersTest {
         val silent = gym.copy(routineId = "r")
         val quiet = ReminderPlanner.plan(listOf(plan), listOf(silent), prefs, early, ZoneOffset.UTC, listOf(routine("r", RoutineFrequency.DAILY, remind = false)))
         assertTrue(quiet.none { it.taskId == "g" })
+        val midnight = plan.copy(blocks = listOf(PlanBlock("g", "Gym", BlockKind.TASK, LocalTime.of(0, 10), LocalTime.of(0, 40))))
+        val atMidnight = ReminderPlanner.plan(listOf(midnight), listOf(gym), prefs.copy(reminderLeadMinutes = 15), Instant.parse("2026-10-05T20:00:00Z"), ZoneOffset.UTC)
+        assertEquals(Instant.parse("2026-10-05T23:55:00Z"), atMidnight.single { it.kind == ReminderKind.TASK }.at, "lead time crosses midnight to the evening before")
         val late = Instant.parse("2026-10-06T10:55:00Z")
         assertEquals(listOf(ReminderKind.TASK), ReminderPlanner.plan(listOf(plan), listOf(gym, secret), prefs, late, ZoneOffset.UTC).map { it.kind })
     }
@@ -268,7 +300,7 @@ class RoutinesAndRemindersTest {
         assertEquals(0, second.routineTasksAdded)
         assertTrue(second.replanned.isEmpty())
         val audited = g.audit.count()
-        com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(g.orchestrator, g.tasks, g.plans, g.routines, g.clock) { false }.run()
+        com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(g.orchestrator, g.tasks, g.plans, g.routines, g.clock, remindersReady = { false }).run()
         assertEquals(audited, g.audit.count(), "nothing to do and reminders off: no tool calls, no History entries")
         assertTrue(g.audit.all().none { "Gym" in (it.detail ?: "") }, "audit never holds titles")
     }

@@ -101,9 +101,11 @@ class AppContainer(context: Context) : AppServices {
     private val scheduler by lazy { AlarmNotificationScheduler(appContext, clock) }
     private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
     override val maintenance by lazy {
-        DailyMaintenance(orchestrator, tasks, plans, routines, clock) {
-            flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS)
-        }
+        DailyMaintenance(
+            orchestrator, tasks, plans, routines, clock,
+            remindersReady = { flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS) },
+            afterRun = { scheduler.scheduleMaintenance() },
+        )
     }
 
     override fun wipeLocalStorage(): Boolean =
@@ -136,7 +138,7 @@ class AppContainer(context: Context) : AppServices {
                     CreateRoutineTool(routines, ids, clock),
                     UpdateRoutineTool(routines),
                     DeleteRoutineTool(routines),
-                    MaterializeRoutinesTool(routines, tasks, ids, clock),
+                    MaterializeRoutinesTool(routines, tasks, clock),
                     ExportDataTool(export, exportTargets),
                     DeleteAllDataTool(deletion),
                     UpdateSecuritySettingsTool(security),

@@ -99,7 +99,7 @@ class TestGraph(
             CreateRoutineTool(routines, ids, clock),
             UpdateRoutineTool(routines),
             DeleteRoutineTool(routines),
-            MaterializeRoutinesTool(routines, tasks, ids, clock),
+            MaterializeRoutinesTool(routines, tasks, clock),
             ExportDataTool(export, exportTargets),
             DeleteAllDataTool(deletion),
             UpdateSecuritySettingsTool(security),

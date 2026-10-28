@@ -169,7 +169,6 @@ class DeleteRoutineTool(private val routines: RoutineRepository) : AgentTool {
 class MaterializeRoutinesTool(
     private val routines: RoutineRepository,
     private val tasks: TaskRepository,
-    private val ids: IdGenerator,
     private val clock: Clock,
 ) : AgentTool {
     override val spec = ToolSpec(
@@ -187,7 +186,7 @@ class MaterializeRoutinesTool(
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val date = parseDate(args.string("date"))!!
-        val created = RoutineExpander.tasksFor(date, routines.all(), tasks.all(), ids, clock.instant())
+        val created = RoutineExpander.tasksFor(date, routines.all(), tasks.all(), clock.instant())
         if (created.isNotEmpty()) tasks.upsert(created)
         return ToolOutcome.Success("routine tasks=${created.size}")
     }
@@ -195,7 +194,8 @@ class MaterializeRoutinesTool(
     override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
         val date = parseDate(args.string("date"))!!
         val onDay = tasks.all().filter { it.date == date }.groupingBy { it.routineId }.eachCount()
-        val titles = tasks.all().filter { it.date == date && it.routineId == null }.map { it.title.lowercase() }.toSet()
-        return routines.all().filter { it.isDueOn(date) }.all { onDay[it.id] == 1 || (onDay[it.id] == null && it.title.lowercase() in titles) }
+        // Same rule as RoutineExpander: a routine is covered by its own task or by any task with its title that day.
+        val titles = tasks.all().filter { it.date == date }.map { it.title.lowercase() }.toSet()
+        return routines.all().filter { it.isDueOn(date) }.all { (onDay[it.id] ?: 0) <= 1 && (onDay[it.id] == 1 || it.title.lowercase() in titles) }
     }
 }

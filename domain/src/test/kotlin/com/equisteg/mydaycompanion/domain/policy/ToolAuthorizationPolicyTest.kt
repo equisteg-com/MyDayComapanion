@@ -81,4 +81,16 @@ class ToolAuthorizationPolicyTest {
             assertFailsWith<IllegalArgumentException> { FeatureFlags(mapOf(it to true)) }
         }
     }
+
+    @Test
+    fun `the app's own scheduled work may only run quiet L0 and L1 tools`() {
+        assertIs<PolicyDecision.Allow>(decide(spec(RiskLevel.L1, proposable = false, confirmation = Confirmation.NEVER), Requester.SYSTEM))
+        assertEquals(DenyReason.NOT_SYSTEM_RUNNABLE, (decide(spec(RiskLevel.L2, confirmation = Confirmation.NEVER), Requester.SYSTEM) as PolicyDecision.Deny).reason)
+        assertEquals(DenyReason.NOT_SYSTEM_RUNNABLE, (decide(spec(RiskLevel.L1, confirmation = Confirmation.WHEN_PROPOSED_BY_AGENT), Requester.SYSTEM) as PolicyDecision.Deny).reason)
+        val fp = ToolAuthorizationPolicy.fingerprint("test.tool", "{}")
+        assertEquals(
+            DenyReason.NOT_SYSTEM_RUNNABLE,
+            (decide(spec(RiskLevel.L4, proposable = false, confirmation = Confirmation.ALWAYS), Requester.SYSTEM, confirmation = UserConfirmation(fp)) as PolicyDecision.Deny).reason,
+        )
+    }
 }

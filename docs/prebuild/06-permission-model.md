@@ -68,8 +68,11 @@ challenge answer) after the tap. Taking the personal mark off a task is itself a
 1. Unknown tool → deny `UNKNOWN_TOOL`.
 2. Feature flag off → deny `FEATURE_DISABLED`.
 3. Agent requests a non-proposable tool → deny `NOT_AGENT_PROPOSABLE` (even with a confirmation).
+3a. The app's own scheduled work (`Requester.SYSTEM`: nightly run, after a restart) requests anything above L1 or
+    anything that can need a confirmation → deny `NOT_SYSTEM_RUNNABLE`. It is audited as actor SYSTEM.
 4. Arguments fail the tool's own validation → deny `INVALID_ARGUMENTS`.
 5. Required Android permission not granted now → deny `PERMISSION_MISSING`.
 6. L3/L4, or confirmation ALWAYS, or a personal item, or WHEN_PROPOSED_BY_AGENT with an agent requester → require a
    `UserConfirmation` whose fingerprint matches SHA-256(tool id + canonical args); mismatch → deny.
+   A SYSTEM requester can never satisfy this step → deny `NOT_SYSTEM_RUNNABLE`.
 7. Otherwise allow. Every outcome is audited.

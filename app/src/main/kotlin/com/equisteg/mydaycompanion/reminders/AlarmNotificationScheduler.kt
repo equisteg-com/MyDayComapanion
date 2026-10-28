@@ -64,8 +64,11 @@ class AlarmNotificationScheduler(
         prefs.edit { remove(KEY_IDS) }
     }
 
-    /** Wakes the app a few minutes after midnight to add the new day's routine tasks and reminders. */
-    private fun scheduleMaintenance() {
+    /**
+     * Wakes the app a few minutes after midnight to add the new day's routine tasks and reminders.
+     * Set after every maintenance run, so routines keep working even when notifications are refused.
+     */
+    fun scheduleMaintenance() {
         val next = LocalDate.now(clock).plusDays(1).atTime(LocalTime.of(0, 5)).atZone(clock.zone).toInstant()
         alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, next.toEpochMilli(), maintenanceIntent(PendingIntent.FLAG_UPDATE_CURRENT)!!)
     }

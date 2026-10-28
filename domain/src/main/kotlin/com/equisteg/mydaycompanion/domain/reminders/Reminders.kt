@@ -8,6 +8,7 @@ import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
 import java.time.Instant
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 
@@ -70,14 +71,15 @@ object ReminderPlanner {
                         BlockKind.TASK -> {
                             val task = byId[block.refId] ?: continue
                             if (task.status != TaskStatus.OPEN || task.routineId in silentRoutines) continue
-                            val time = task.remindAt ?: block.start.minusMinutes(lead)
-                            add(taskReminder(plan.date, task, time, block.start, zone))
+                            val at = task.remindAt?.let { plan.date.atTime(it) } ?: plan.date.atTime(block.start).minusMinutes(lead)
+                            add(taskReminder(plan.date, task, at, block.start, zone))
                         }
                         BlockKind.FIXED_EVENT -> add(
                             Reminder(
                                 id = "event:${block.refId}:${plan.date}",
                                 kind = ReminderKind.EVENT,
-                                at = plan.date.atTime(block.start.minusMinutes(lead)).atZone(zone).toInstant(),
+                                // Lead time counted on the full date-time, so 00:10 minus 15 minutes is the evening before.
+                                at = plan.date.atTime(block.start).minusMinutes(lead).atZone(zone).toInstant(),
                                 title = block.title,
                                 body = "Starts at ${block.start}",
                             ),
@@ -89,10 +91,10 @@ object ReminderPlanner {
         }
     }
 
-    private fun taskReminder(date: LocalDate, task: Task, time: LocalTime, start: LocalTime, zone: ZoneId) = Reminder(
+    private fun taskReminder(date: LocalDate, task: Task, at: LocalDateTime, start: LocalTime, zone: ZoneId) = Reminder(
         id = "task:${task.id}:$date",
         kind = ReminderKind.TASK,
-        at = date.atTime(time).atZone(zone).toInstant(),
+        at = at.atZone(zone).toInstant(),
         title = if (task.personal) PERSONAL_TITLE else task.title,
         body = "Planned for $start",
         taskId = task.id,

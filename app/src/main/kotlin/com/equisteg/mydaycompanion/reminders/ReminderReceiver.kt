@@ -39,6 +39,7 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 when (intent.action) {
                     ACTION_SHOW -> show(context, intent)
+                    ACTION_SNOOZE -> snooze(context, intent)
                     ACTION_DONE -> done(context, app, intent.getStringExtra(EXTRA_TASK_ID), intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
                     ACTION_MAINTENANCE,
                     Intent.ACTION_BOOT_COMPLETED,
@@ -87,8 +88,28 @@ class ReminderReceiver : BroadcastReceiver() {
             )
             builder.addAction(0, "Done", done)
         }
+        if (kind != ReminderKind.BRIEF) {
+            val snooze = PendingIntent.getBroadcast(
+                context, id,
+                Intent(intent).setAction(ACTION_SNOOZE).putExtra(EXTRA_NOTIFICATION_ID, id),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.addAction(0, "In $SNOOZE_MINUTES min", snooze)
+        }
         @Suppress("MissingPermission") // checked in canNotify
         NotificationManagerCompat.from(context).notify(id, builder.build())
+    }
+
+    /**
+     * The owner tapped "In 10 min": the same reminder shows again later. One-off: the next full sync
+     * replaces it only if the task's own reminder changes, which is fine because a snooze is short.
+     */
+    private fun snooze(context: Context, intent: Intent) {
+        NotificationManagerCompat.from(context).cancel(intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
+        val again = Intent(intent).setAction(ACTION_SHOW).setData(android.net.Uri.parse("${intent.dataString}#snooze"))
+        val pi = PendingIntent.getBroadcast(context, 0, again, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        context.getSystemService(android.app.AlarmManager::class.java)
+            .setAndAllowWhileIdle(android.app.AlarmManager.RTC_WAKEUP, System.currentTimeMillis() + SNOOZE_MINUTES * 60_000L, pi)
     }
 
     /** The owner tapped Done. A personal task still needs the owner's verification, so that one opens the app instead. */
@@ -123,6 +144,8 @@ class ReminderReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_SHOW = "com.equisteg.mydaycompanion.action.SHOW_REMINDER"
         const val ACTION_DONE = "com.equisteg.mydaycompanion.action.REMINDER_DONE"
+        const val ACTION_SNOOZE = "com.equisteg.mydaycompanion.action.REMINDER_SNOOZE"
+        const val SNOOZE_MINUTES = 10
         const val ACTION_MAINTENANCE = "com.equisteg.mydaycompanion.action.DAILY_MAINTENANCE"
         const val EXTRA_KIND = "kind"
         const val EXTRA_TITLE = "title"
