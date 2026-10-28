@@ -23,7 +23,19 @@ class ManifestSecurityTest {
         "android.permission.USE_FINGERPRINT",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_CALENDAR",
+        "com.android.alarm.permission.SET_ALARM",
     )
+
+    @Test
+    fun `the calendar is read-only and nothing reads contacts, SMS or location`() {
+        val perms = doc.getElementsByTagName("uses-permission")
+        val names = (0 until perms.length).map { (perms.item(it) as Element).getAttributeNS(ns, "name") }
+        listOf("WRITE_CALENDAR", "READ_CONTACTS", "READ_SMS", "SEND_SMS", "CALL_PHONE", "ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION").forEach { p ->
+            assertTrue(names.none { it.endsWith(".$p") }, "$p must not be requested")
+        }
+    }
 
     @Test
     fun `no network permission and no unapproved permissions`() {

@@ -41,7 +41,16 @@ import com.equisteg.mydaycompanion.domain.tools.DeleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
+import com.equisteg.mydaycompanion.data.device.ContentResolverCalendarProvider
+import com.equisteg.mydaycompanion.device.AndroidDeviceActionLauncher
+import com.equisteg.mydaycompanion.device.AndroidSpeaker
+import com.equisteg.mydaycompanion.domain.tools.CalendarInsertTool
+import com.equisteg.mydaycompanion.domain.tools.ComposeMessageTool
 import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
+import com.equisteg.mydaycompanion.domain.tools.DialTool
+import com.equisteg.mydaycompanion.domain.tools.NavigateTool
+import com.equisteg.mydaycompanion.domain.tools.SetAlarmTool
+import com.equisteg.mydaycompanion.domain.tools.SpeakTool
 import com.equisteg.mydaycompanion.domain.tools.DeleteRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.MaterializeRoutinesTool
 import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
@@ -69,11 +78,26 @@ interface AppServices {
     val preferences: PreferencesStore
     val routines: RoutineRepository
 
+    /** Owner switches kept on the phone only: "show my calendar in plans". */
+    val deviceSettings: DeviceSettings
+
     /** Adds routine tasks, replans and re-registers reminders; run on open, after restarts and each night. */
     val maintenance: DailyMaintenance
 
     /** Closes and deletes the database files and destroys their key (build doc §8.4). The app must restart afterwards. */
     fun wipeLocalStorage(): Boolean
+}
+
+/** Small owner switches that are not part of the encrypted data (they hold no personal content). */
+interface DeviceSettings {
+    var calendarInPlans: Boolean
+}
+
+class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
+    private val prefs = context.getSharedPreferences("device_settings", Context.MODE_PRIVATE)
+    override var calendarInPlans: Boolean
+        get() = prefs.getBoolean("calendar_in_plans", false)
+        set(value) = prefs.edit().putBoolean("calendar_in_plans", value).apply()
 }
 
 /**
@@ -99,6 +123,12 @@ class AppContainer(context: Context) : AppServices {
     override val security by lazy { RoomSecurityStore(db) }
     override val challenges by lazy { ChallengeVerifier(security, clock::instant) }
     private val scheduler by lazy { AlarmNotificationScheduler(appContext, clock) }
+    override val deviceSettings by lazy { SharedPrefsDeviceSettings(appContext) }
+    private val calendar by lazy {
+        ContentResolverCalendarProvider(appContext, { clock.zone }) { flags.isEnabled(Flag.CALENDAR_READ) && deviceSettings.calendarInPlans }
+    }
+    private val launcher by lazy { AndroidDeviceActionLauncher(appContext) }
+    private val speaker by lazy { AndroidSpeaker(appContext) }
     private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
     override val maintenance by lazy {
         DailyMaintenance(
@@ -127,7 +157,7 @@ class AppContainer(context: Context) : AppServices {
             registry = ToolRegistry(
                 listOf(
                     CreateTasksTool(tasks, events, ids, clock),
-                    GeneratePlanTool(tasks, events, plans, preferences, planner),
+                    GeneratePlanTool(tasks, events, plans, preferences, planner, calendar),
                     CompleteTaskTool(tasks, clock),
                     ReopenTaskTool(tasks, clock),
                     UpdateTaskTool(tasks, clock),
@@ -139,6 +169,12 @@ class AppContainer(context: Context) : AppServices {
                     UpdateRoutineTool(routines),
                     DeleteRoutineTool(routines),
                     MaterializeRoutinesTool(routines, tasks, clock),
+                    SetAlarmTool(launcher),
+                    DialTool(launcher),
+                    ComposeMessageTool(launcher),
+                    NavigateTool(launcher),
+                    CalendarInsertTool(launcher),
+                    SpeakTool(speaker),
                     ExportDataTool(export, exportTargets),
                     DeleteAllDataTool(deletion),
                     UpdateSecuritySettingsTool(security),

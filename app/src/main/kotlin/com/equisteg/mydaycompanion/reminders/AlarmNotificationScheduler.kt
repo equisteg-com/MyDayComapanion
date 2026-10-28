@@ -92,15 +92,22 @@ class AlarmNotificationScheduler(
         private const val PREFS = "reminder_alarms"
         private const val KEY_IDS = "ids"
         private const val KEY_SNOOZES = "snoozes"
+        const val SNOOZE_FRAGMENT = "snooze"
 
         /** A snoozed reminder: the same notification again at [atMillis]. Its id is recorded so [cancelEverything] can cancel it. */
         fun snooze(context: Context, shown: Intent, atMillis: Long) {
-            val data = Uri.parse("${shown.dataString}#snooze")
+            val data = Uri.parse("${shown.data?.buildUpon()?.fragment(null)?.build()}#$SNOOZE_FRAGMENT")
             val again = Intent(shown).setAction(ReminderReceiver.ACTION_SHOW).setData(data)
             val pi = PendingIntent.getBroadcast(context, 0, again, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, pi)
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             prefs.edit { putStringSet(KEY_SNOOZES, prefs.getStringSet(KEY_SNOOZES, emptySet()).orEmpty() + data.toString()) }
+        }
+
+        /** Called when a snoozed reminder fires, so fired snoozes don't pile up. */
+        fun forgetSnooze(context: Context, data: String) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            prefs.edit { putStringSet(KEY_SNOOZES, prefs.getStringSet(KEY_SNOOZES, emptySet()).orEmpty() - data) }
         }
 
         private fun cancelSnoozes(context: Context) {

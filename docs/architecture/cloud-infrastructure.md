@@ -46,9 +46,9 @@ What the subscription check changes in the app:
 | F16 History of actions | Phone | Yes (filters still to do) |
 | F4 Reminders that survive a restart | Phone (AlarmManager, notifications) | Yes (part 4) |
 | F5 Routines | Phone (AlarmManager nightly run) | Yes (part 4) |
-| F6 Voice in and out | Phone (on-device speech recogniser and text-to-speech) | Not yet (part 5) |
-| F7 Calendar read | Phone (Calendar Provider) | Not yet (part 5) |
-| F8 Device actions: alarm, call, SMS or e-mail draft, maps | Phone (Android intents; the owner presses Send) | Not yet (part 5) |
+| F6 Voice in and out | Phone (on-device speech recogniser where the phone has one; text-to-speech) | Yes (part 5) |
+| F7 Calendar read | Phone (Calendar Provider, read-only) | Yes (part 5) |
+| F8 Device actions: alarm, call, SMS or e-mail draft, maps, calendar entry | Phone (Android intents; the owner presses Call, Send or Save) | Yes (part 5) |
 | F9 Memory review | Phone | Model built; review screen not yet (part 6) |
 | F13 Backup and moving to a new phone | Phone; the owner keeps a passphrase-encrypted file wherever they like | Not yet (part 6) |
 | F14 Theft protection | Phone (Keystore, lockout, wipe) + Google's Find My Device | Local parts yes; settings polish in part 6 |

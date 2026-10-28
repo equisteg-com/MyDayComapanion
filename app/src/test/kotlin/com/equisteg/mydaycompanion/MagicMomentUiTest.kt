@@ -44,6 +44,7 @@ internal class TestServices(val graph: TestGraph, appLock: Boolean = false, onbo
     override val challenges = ChallengeVerifier(graph.security, graph.clock::instant)
     override val preferences = graph.preferences
     override val routines = graph.routines
+    override val deviceSettings = object : DeviceSettings { override var calendarInPlans = false }
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false
 

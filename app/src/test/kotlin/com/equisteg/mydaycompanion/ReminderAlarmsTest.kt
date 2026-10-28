@@ -52,4 +52,20 @@ class ReminderAlarmsTest {
         scheduler.cancelEverything()
         assertEquals(0, alarms.scheduledAlarms.size, "nothing left that could show a deleted task's title")
     }
+
+    @Test
+    fun `a fired snooze is forgotten, and snoozing again reuses the same alarm`() {
+        val shown = Intent(context, ReminderReceiver::class.java).setAction(ReminderReceiver.ACTION_SHOW)
+            .setData(Uri.parse("mdc-reminder:event:cal:7:2026-10-06:2026-10-06"))
+            .putExtra(ReminderReceiver.EXTRA_KIND, "EVENT").putExtra(ReminderReceiver.EXTRA_TITLE, "Standup")
+        AlarmNotificationScheduler.snooze(context, shown, Instant.parse("2026-10-06T10:00:00Z").toEpochMilli())
+        val snoozed = Intent(shown).setData(Uri.parse("mdc-reminder:event:cal:7:2026-10-06:2026-10-06#snooze"))
+        AlarmNotificationScheduler.snooze(context, snoozed, Instant.parse("2026-10-06T10:10:00Z").toEpochMilli())
+        val prefs = context.getSharedPreferences("reminder_alarms", Context.MODE_PRIVATE)
+        assertEquals(setOf("mdc-reminder:event:cal:7:2026-10-06:2026-10-06#snooze"), prefs.getStringSet("snoozes", null))
+        assertEquals(1, alarms.scheduledAlarms.size, "a second snooze replaces the first")
+
+        AlarmNotificationScheduler.forgetSnooze(context, "mdc-reminder:event:cal:7:2026-10-06:2026-10-06#snooze")
+        assertEquals(emptySet(), prefs.getStringSet("snoozes", null))
+    }
 }

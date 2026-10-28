@@ -6,8 +6,8 @@ package com.equisteg.mydaycompanion.domain.config
  */
 enum class Flag(val key: String, val defaultEnabled: Boolean, val locked: Boolean = false) {
     REMINDERS("reminders", defaultEnabled = true),
-    VOICE("voice", defaultEnabled = false),
-    CALENDAR_READ("calendar_read", defaultEnabled = false),
+    VOICE("voice", defaultEnabled = true),
+    CALENDAR_READ("calendar_read", defaultEnabled = true),
     ROUTINES("routines", defaultEnabled = true),
     LOCAL_LLM("local_llm", defaultEnabled = false),
 

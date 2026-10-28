@@ -17,8 +17,10 @@
 | USE_BIOMETRIC, USE_FINGERPRINT (API < 28) | 1 (agent OS PR 2) | Show the system fingerprint/face/screen-lock prompt for app lock and L3/L4/personal approvals. Install-time (normal) permissions, no runtime dialog; declared by `androidx.biometric` and declared explicitly in our manifest so the allowlist test sees them. The app never receives biometric data, only success or failure. | L0 | Declared |
 | POST_NOTIFICATIONS (API 33+) | 1 (agent OS part 4) | Local reminders, the Done button and the morning brief. Asked once after first-run setup; if refused, reminders are skipped (no tool call is made) and everything else works. Lock-screen notifications show only "Reminder" (`VISIBILITY_PRIVATE` with a public version); personal tasks never show their title anywhere. | L1 | Declared |
 | RECEIVE_BOOT_COMPLETED | 1 (agent OS part 4) | Android drops alarms on restart. `ReminderReceiver` (not exported) re-runs daily maintenance after boot, an app update or a clock/time-zone change. Install-time permission, no dialog. | L0 | Declared |
-| RECORD_AUDIO | 1 | On-device speech input, only while the mic button is held | L2 | Not declared yet |
-| READ_CALENDAR | 1 | Show fixed events when planning (read-only) | L2 | Not declared yet |
+| RECORD_AUDIO | 1 (agent OS part 5) | Press-to-talk (F6). Asked on the first tap of 🎤; the recogniser runs only from the tap to the end of the sentence; no wake word, no background listening. On Android 12+ phones with on-device recognition the audio never leaves the phone; elsewhere the phone's default recogniser is used with "prefer offline" and Settings says it may use its provider's service. The words only fill the input box. | L1 | Declared |
+| READ_CALENDAR | 1 (agent OS part 5) | Calendar events planned around (F7), read-only, only while the owner's "Show my calendar in plans" switch is on. All-day, declined and hidden events are skipped; titles that look like instructions are shown as "Calendar event". Nothing is written back or copied out except into the owner's own plans. | L1 | Declared |
+| SET_ALARM | 1 (agent OS part 5) | Hand an alarm to the clock app (F8, `device.setAlarm`). Install-time (normal) permission. | L3 action | Declared |
+| CALL_PHONE, SEND_SMS, WRITE_CALENDAR | never | Device actions open the dialler, a message draft or the calendar's new-event screen; the owner presses Call, Send or Save there | — | Not requested (`ManifestSecurityTest` fails if added) |
 | SCHEDULE_EXACT_ALARM / USE_EXACT_ALARM | not planned | `setAndAllowWhileIdle` alarms need no permission; in deep idle they can arrive a few minutes late (OQ-17) | — | Not requested |
 | WRITE_CALENDAR, contacts, SMS, location, storage | not planned | — | — | Not requested |
 
@@ -43,6 +45,8 @@ graceful behaviour when denied.
 | `routines.create` / `routines.update` | L2 | yes | when proposed by agent | — | routines (on) | routine re-read and equal |
 | `routines.delete` | L2 | yes | always | — | routines (on) | routine can no longer be read; its tasks stay |
 | `routines.materialize` | L1 | **no** | never | — | routines (on) | each due routine has exactly one task that day |
+| `device.setAlarm` / `device.dial` / `device.composeMessage` / `device.navigate` / `device.calendarInsert` | L3 | yes | always (tap + device credential) | SET_ALARM for alarms | — | another app accepted the intent; arguments (numbers, addresses, text) never audited |
+| `voice.speak` | L1 | **no** | never | — | voice (on) | engine accepted the text; the text is never audited |
 | `data.export` | L3 | **no** | always | — (SAF) | — | bytes written = export size |
 | `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0; then the app deletes the database files and destroys the key |
 | `security.updateSettings` | L4 | **no** | always | — | — | stored settings equal requested |

@@ -1,6 +1,8 @@
 package com.equisteg.mydaycompanion.domain.tools
 
 import com.equisteg.mydaycompanion.domain.config.Flag
+import com.equisteg.mydaycompanion.domain.future.CalendarProvider
+import com.equisteg.mydaycompanion.domain.future.NoCalendarProvider
 import com.equisteg.mydaycompanion.domain.future.NotificationScheduler
 import com.equisteg.mydaycompanion.domain.model.FixedEvent
 import com.equisteg.mydaycompanion.domain.model.Priority
@@ -142,6 +144,8 @@ class GeneratePlanTool(
     private val plans: PlanRepository,
     private val preferences: PreferencesStore,
     private val planner: PlannerEngine,
+    /** Read-only events from the phone's calendar (F7); empty unless the owner switched it on and allowed it. */
+    private val calendar: CalendarProvider = NoCalendarProvider,
 ) : AgentTool {
     override val spec = ToolSpec(
         id = "plan.generate",
@@ -166,7 +170,7 @@ class GeneratePlanTool(
         return PlanRequest(
             date = date,
             tasks = tasks.all().filter { it.date == date },
-            fixedEvents = events.forDate(date),
+            fixedEvents = mergeCalendar(events.forDate(date), calendar.eventsOn(date)),
             dayStart = prefs.dayStart,
             dayEnd = prefs.dayEnd,
             bufferMinutes = prefs.bufferMinutes,
@@ -189,6 +193,14 @@ class GeneratePlanTool(
         return PlanValidator.validate(saved, request).isEmpty()
     }
 }
+
+/** Calendar events join the owner's own events; one already typed in (same title and start) is not added twice. */
+internal fun mergeCalendar(own: List<FixedEvent>, fromCalendar: List<FixedEvent>): List<FixedEvent> {
+    val seen = own.map { it.title.lowercase() to it.start }.toSet()
+    return own + fromCalendar.filter { (it.title.lowercase() to it.start) !in seen }.distinctBy { it.id }.take(MAX_CALENDAR_EVENTS)
+}
+
+internal const val MAX_CALENDAR_EVENTS = 30
 
 /** tasks.complete — marks one task done. Args: {"taskId"} */
 class CompleteTaskTool(private val tasks: TaskRepository, private val clock: Clock) : AgentTool {

@@ -20,6 +20,23 @@
     <!-- Android forgets alarms on restart; this lets the app put reminders back after the phone starts. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!-- Press-to-talk (F6): asked on the first tap of the mic, used only while the owner speaks. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Calendar events in the plan (F7), read-only: asked when the owner switches it on. -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Hand an alarm to the clock app (F8). Install-time; the clock app shows it. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
+    <!-- Package visibility (Android 11+): the speech recogniser and text-to-speech engine this app talks to. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MyDayCompanionApp"
         android:allowBackup="false"
