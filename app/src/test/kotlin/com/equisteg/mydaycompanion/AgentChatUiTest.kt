@@ -240,6 +240,14 @@ class AgentChatUiTest {
 
         assertNull(services.focusEndAt, "the end alarm goes with the session")
 
+        // With the app in the background, the alarm stays: it is what tells the owner time is up.
+        vm.say("focus 10 min on report")
+        vm.onAppBackground()
+        vm.finishFocus(assertNotNull(vm.state.value.focus))
+        assertNotNull(services.focusEndAt)
+        vm.onAppForeground()
+        vm.onDismissSuggestion()
+
         vm.say("focus")
         assertEquals(25, vm.state.value.focus?.minutes)
         assertEquals(graph.clock.millis() + 25 * 60_000L, services.focusEndAt, "the end shows even if the app is closed")

@@ -69,6 +69,8 @@ fun MemoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var draft by rememberSaveable { mutableStateOf("") }
     var private by rememberSaveable { mutableStateOf(false) }
+    // Leaving the Memory tab hides private memories again.
+    DisposableEffect(Unit) { onDispose { viewModel.onHidePrivate() } }
 
     LazyColumn(modifier.fillMaxSize().padding(16.dp).testTag("memory-screen"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {

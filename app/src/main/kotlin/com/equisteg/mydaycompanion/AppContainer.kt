@@ -328,7 +328,7 @@ class AppContainer(context: Context) : AppServices {
                     com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
                     com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
                     com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
-                    com.equisteg.mydaycompanion.domain.tools.PrivacySettingsTool(deviceSettings),
+                    com.equisteg.mydaycompanion.domain.tools.PrivacySettingsTool(deviceSettings, audit, clock),
                     com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(com.equisteg.mydaycompanion.domain.backup.BackupService(export, security), exportTargets, backupStaging),
                     com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(backupStaging, tasks, events, plans, routines, memories, audit, preferences, security, com.equisteg.mydaycompanion.data.repository.RoomStoreTransactions(db)),
                 ),

@@ -20,6 +20,8 @@ object FocusAlarm {
             alarms.cancel(pi)
             pi.cancel()
         }
+        // Cancelled from the app: an earlier "Focus time is up" is out of date too.
+        if (atMillis == null) androidx.core.app.NotificationManagerCompat.from(context).cancel(ReminderReceiver.FOCUS_NOTIFICATION_ID)
         if (atMillis != null) {
             alarms.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, atMillis, intent(context, PendingIntent.FLAG_UPDATE_CURRENT)!!)
         }

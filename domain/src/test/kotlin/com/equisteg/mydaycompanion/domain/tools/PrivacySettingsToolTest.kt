@@ -43,6 +43,9 @@ class PrivacySettingsToolTest {
         val g = TestGraph()
         assertFalse(g.orchestrator.execute(action(PrivacySettingsTool.LOCK_SCREEN_TEXT, "on"), Requester.AGENT) is ExecutionResult.Done)
         assertFalse(g.privacy.lockScreenText)
+        // Nor can a background job.
+        assertFalse(g.orchestrator.execute(action(PrivacySettingsTool.LOCK_SCREEN_TEXT, "on"), Requester.SYSTEM) is ExecutionResult.Done)
+        assertFalse(g.privacy.lockScreenText)
         for ((setting, value) in listOf("lockScreenText" to "yes", "historyKeepDays" to "7", "theme" to "on")) {
             assertFalse(g.orchestrator.execute(action(setting, value), Requester.USER) is ExecutionResult.Done, "$setting=$value")
         }
@@ -58,5 +61,20 @@ class PrivacySettingsToolTest {
         assertEquals(listOf("old"), g.audit.recentMatching(HistoryFilter.ATTENTION, 3).map { it.id })
         assertEquals(listOf("n9", "n8", "n7"), g.audit.recentMatching(HistoryFilter.ALL, 3).map { it.id })
         assertEquals(null, g.audit.latestSuccess("backup.restore"))
+    }
+
+    @Test
+    fun `a shorter History period can't skip the confirmed prune`() = runTest {
+        val g = TestGraph()
+        val now = g.clock.instant()
+        g.audit.record(AuditEntry("old", now.minus(java.time.Duration.ofDays(60)), AuditActor.USER, "tasks.complete", RiskLevel.L1, AuditDecision.ALLOWED, AuditOutcome.SUCCESS))
+        val r = g.orchestrator.execute(action(PrivacySettingsTool.HISTORY_KEEP_DAYS, "30"), Requester.USER)
+        assertFalse(r is ExecutionResult.Done)
+        assertEquals(com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS, g.privacy.historyKeepDays)
+        // Longer is always fine; shorter is fine once nothing older remains.
+        assertIs<ExecutionResult.Done>(g.orchestrator.execute(action(PrivacySettingsTool.HISTORY_KEEP_DAYS, "365"), Requester.USER))
+        g.audit.entries.removeAll { it.id == "old" }
+        assertIs<ExecutionResult.Done>(g.orchestrator.execute(action(PrivacySettingsTool.HISTORY_KEEP_DAYS, "30"), Requester.USER))
+        assertEquals(30, g.privacy.historyKeepDays)
     }
 }

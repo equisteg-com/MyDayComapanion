@@ -62,9 +62,14 @@ interface PrivacySwitches {
  * settings.privacy — changes one privacy switch and records it in History (OQ-22 b), so a change
  * made by whoever held the unlocked phone is visible later. The entry says which switch and its new
  * value only. Owner only; a shorter History period first goes through `history.prune`.
+ * A shorter History period is refused while entries older than it remain (they go through the confirmed prune).
  * Args: {"setting":"lockScreenText"|"widgetTitles"|"historyKeepDays","value":"on"|"off"|"<days>"}
  */
-class PrivacySettingsTool(private val switches: PrivacySwitches) : AgentTool {
+class PrivacySettingsTool(
+    private val switches: PrivacySwitches,
+    private val audit: AuditLog,
+    private val clock: Clock,
+) : AgentTool {
     override val spec = ToolSpec(
         id = "settings.privacy",
         description = "Change a privacy switch (lock-screen text, widget names, History period).",
@@ -72,6 +77,7 @@ class PrivacySettingsTool(private val switches: PrivacySwitches) : AgentTool {
         agentProposable = false,
         confirmation = Confirmation.NEVER,
         verification = "The switch reads back the new value.",
+        userOnly = true,
     )
 
     private fun parse(args: JsonObject): Pair<String, String>? {
@@ -90,6 +96,12 @@ class PrivacySettingsTool(private val switches: PrivacySwitches) : AgentTool {
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val (setting, value) = parse(args) ?: return ToolOutcome.Failure("INVALID")
+        // A shorter period that would drop entries must go through the confirmed `history.prune` first.
+        if (setting == HISTORY_KEEP_DAYS) {
+            val days = value.toInt()
+            val cutoff = PruneHistoryTool(audit, clock).cutoff(days)
+            if (days < switches.historyKeepDays && audit.countBefore(cutoff) > 0) return ToolOutcome.Failure("PRUNE_FIRST")
+        }
         when (setting) {
             LOCK_SCREEN_TEXT -> switches.lockScreenText = value == ON
             WIDGET_TITLES -> switches.widgetTitles = value == ON

@@ -111,6 +111,14 @@ class MemoryHistoryUiTest {
         vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
         compose.waitUntil(5_000) { compose.onAllNodes(hasText("Therapy on Tuesdays")).fetchSemanticsNodes().isNotEmpty() }
 
+        // Another tab and back: hidden again.
+        compose.onNodeWithTag("nav-HISTORY").performClick()
+        compose.onNodeWithTag("nav-MEMORY").performClick()
+        compose.waitUntil(5_000) { has("memory-hidden-s1") }
+        compose.onNodeWithTag("show-private").performClick()
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        compose.waitUntil(5_000) { compose.onAllNodes(hasText("Therapy on Tuesdays")).fetchSemanticsNodes().isNotEmpty() }
+
         vm.onAppBackground()
         compose.waitUntil(5_000) { has("memory-hidden-s1") }
         assertTrue(graph.audit.entries.none { "Therapy" in it.detail.orEmpty() })

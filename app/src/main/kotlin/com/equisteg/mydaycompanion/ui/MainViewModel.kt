@@ -547,7 +547,8 @@ class MainViewModel(
     }
 
     internal fun finishFocus(focus: FocusSession) {
-        services.scheduleFocusEnd(null)
+        // In the background the alarm is what tells the owner; only cancel it while the app is on screen.
+        if (backgroundedAt == null) services.scheduleFocusEnd(null)
         _state.update { it.copy(focus = null) }
         val text = "Time's up: ${focus.minutes} minutes of focus done."
         chat(owner = false, text)
@@ -757,15 +758,15 @@ class MainViewModel(
         }
     }
 
+    /** Days from today on that came in with a restore and haven't been shown since. */
+    private val replanOnView = mutableSetOf<LocalDate>()
+
     fun selectDate(date: LocalDate) {
         selectedDate.value = date
         _state.update { it.copy(selectedDate = date) }
         // A restored day keeps its blocks but not its "couldn't fit" notes; plan it again on first view (OQ-24 d).
         if (replanOnView.remove(date)) launchBusy { replan(date) }
     }
-
-    /** Days from today on that came in with a restore and haven't been shown since. */
-    private val replanOnView = mutableSetOf<LocalDate>()
 
     fun onExportDestinationChosen(uri: Uri) = launchBusy {
         val token = services.exportTargets.register(uri)
@@ -862,7 +863,7 @@ class MainViewModel(
                 is Decrypted.Ok -> {
                     // Only the file the wrong guesses were made on clears them; another backup can't.
                     val settings = services.deviceSettings
-                    if (settings.restoreFailuresFile.isEmpty() || settings.restoreFailuresFile == fileId) {
+                    if (settings.restoreFailures == 0 || settings.restoreFailuresFile == fileId) {
                         settings.restoreFailures = 0
                         settings.restoreFailuresFile = ""
                     }
@@ -898,8 +899,12 @@ class MainViewModel(
     private fun onWrongBackupPassphrase(fileId: String) {
         val settings = services.deviceSettings
         val failures = settings.restoreFailures + 1
-        // The count belongs to the first file guessed on until it is cleared or Restore closes.
-        if (settings.restoreFailuresFile.isEmpty()) settings.restoreFailuresFile = fileId
+        // The count belongs to the file guessed on. Guesses on two files make it "mixed", which only the
+        // lock clears, so a backup someone can open can't be used to reset guessing on another.
+        settings.restoreFailuresFile = when (settings.restoreFailuresFile) {
+            "", fileId -> fileId
+            else -> MIXED_FILES
+        }
         if (failures >= MAX_RESTORE_FAILURES) {
             settings.restoreFailures = 0
             settings.restoreFailuresFile = ""
@@ -944,12 +949,14 @@ class MainViewModel(
 
     /**
      * Restore stays closed for [RESTORE_LOCK] by the wall clock and, in the same boot, by the uptime
-     * clock too, so setting the phone's clock forward doesn't reopen it (OQ-24 a).
+     * clock too, so setting the phone's clock forward doesn't reopen it (OQ-24 a). On a phone that
+     * doesn't report its boot count (0), a lock from before a restart can last up to an hour longer.
      */
     private fun restoreLockedMessage(): String? {
         val settings = services.deviceSettings
         val now = services.clock.millis()
-        val wallLeft = settings.restoreLockedUntilMillis - now
+        // Capped, so setting the clock back can't stretch the lock past an hour.
+        val wallLeft = (settings.restoreLockedUntilMillis - now).coerceAtMost(RESTORE_LOCK.toMillis())
         val elapsed = services.elapsedMillis()
         val since = elapsed - settings.restoreLockedAtElapsed
         val uptimeLeft = if (settings.restoreLockedBoot == services.bootCount() && settings.restoreLockedAtElapsed > 0 && since >= 0) {
@@ -1100,9 +1107,10 @@ class MainViewModel(
 
     fun onAppBackground() {
         // The system credential screen sends the app to the background on older Android; that is not leaving the app.
+        // Private memories hide whenever the app leaves the screen, except while the reveal prompt itself is up.
+        if (_state.value.authRequest?.purpose != AuthPurpose.REVEAL) _state.update { it.copy(privateShown = false) }
         if (_state.value.authRequest != null) return
         backgroundedAt = services.clock.instant()
-        _state.update { it.copy(privateShown = false) }
     }
 
     fun onAppForeground() {
@@ -1116,6 +1124,7 @@ class MainViewModel(
             onCancelBackupPrompt()
             focusJob?.cancel()
             services.scheduleFocusEnd(null)
+            replanOnView.clear()
             _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null, chat = emptyList(), suggestion = null, choice = null, focus = null, privateShown = false) }
         }
     }
@@ -1357,6 +1366,7 @@ class MainViewModel(
 
         /** Wrong backup passphrases in a row before Restore closes for [RESTORE_LOCK] (build doc §7.3). */
         const val MAX_RESTORE_FAILURES = 10
+        private const val MIXED_FILES = "*"
         private const val STALE_MOVE = "That task changed since I offered this, so I left it. Ask me again."
         val RESTORE_LOCK: Duration = Duration.ofHours(1)
 

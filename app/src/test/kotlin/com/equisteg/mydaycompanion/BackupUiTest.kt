@@ -3,6 +3,7 @@ package com.equisteg.mydaycompanion
 import android.net.Uri
 import android.os.Looper
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -20,6 +21,7 @@ import com.equisteg.mydaycompanion.ui.BackupPrompt
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.screens.BackupPassphraseForm
+import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
 import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
@@ -52,8 +54,9 @@ class BackupUiTest {
     private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
     /** A backup made on "the old phone", through the same approved tool the app uses. */
-    private fun oldPhoneBackup(): ByteArray = runBlocking {
+    private fun oldPhoneBackup(extra: suspend (TestGraph) -> Unit = {}): ByteArray = runBlocking {
         val old = TestGraph()
+        extra(old)
         val now = old.clock.instant()
         old.tasks.upsert(listOf(Task("t1", "Call Raj", date = LocalDate.of(2026, 10, 6), createdAt = now), Task("t2", "Buy milk", createdAt = now)))
         old.preferences.set(UserPreferences(onboardingDone = true))
@@ -204,6 +207,32 @@ class BackupUiTest {
     }
 
     @Test
+    fun `a decoy backup guessed on first can't reset guesses on the target`() {
+        val graph = TestGraph()
+        val decoy = oldPhoneBackup()
+        val target = oldPhoneBackup()
+        val services = TestServices(graph).apply { backupFile = decoy }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        idle()
+        fun guess(file: ByteArray, words: String) {
+            vm.onCancelPending()
+            vm.onCancelBackupPrompt()
+            services.backupFile = file
+            vm.onRestoreFileChosen(picked)
+            idle()
+            vm.onRestorePassphrase(words.toCharArray())
+            idle()
+        }
+        guess(decoy, "wrong horse battery")
+        repeat(3) { guess(target, "wrong horse battery") }
+        assertEquals(4, services.deviceSettings.restoreFailures)
+        guess(decoy, passphrase)
+        assertEquals(4, services.deviceSettings.restoreFailures, "opening the decoy doesn't clear guesses made on the target")
+        guess(target, passphrase)
+        assertEquals(4, services.deviceSettings.restoreFailures, "a mixed count waits for the lock")
+    }
+
+    @Test
     fun `setting the phone's clock forward doesn't reopen Restore`() {
         val graph = TestGraph()
         val services = TestServices(graph).apply { backupFile = oldPhoneBackup() }
@@ -229,5 +258,57 @@ class BackupUiTest {
         vm.onRestoreFileChosen(picked)
         idle()
         assertEquals(BackupPrompt.Kind.RESTORE, vm.state.value.backupPrompt?.kind)
+    }
+
+    @Test
+    fun `after a restore, History marks what came with the backup and restored days are planned again on view`() {
+        val graph = TestGraph()
+        val tomorrow = LocalDate.now(graph.clock).plusDays(1)
+        val backup = oldPhoneBackup { old ->
+            // An action from the old phone, an hour before the restore, and a saved plan for tomorrow.
+            old.audit.record(
+                com.equisteg.mydaycompanion.domain.audit.AuditEntry(
+                    "old-phone", old.clock.instant().minusSeconds(3_600), com.equisteg.mydaycompanion.domain.audit.AuditActor.USER, "tasks.complete",
+                    com.equisteg.mydaycompanion.domain.tools.RiskLevel.L1, com.equisteg.mydaycompanion.domain.audit.AuditDecision.ALLOWED,
+                    com.equisteg.mydaycompanion.domain.audit.AuditOutcome.SUCCESS,
+                ),
+            )
+            old.plans.save(com.equisteg.mydaycompanion.domain.model.DayPlan(tomorrow, emptyList(), emptyList(), emptyList(), "old"))
+        }
+        val services = TestServices(graph).apply { backupFile = backup }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        idle()
+        vm.onRestoreFileChosen(picked)
+        idle()
+        vm.onRestorePassphrase(passphrase.toCharArray())
+        idle()
+        vm.onConfirmPending()
+        idle()
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        idle()
+        assertTrue(vm.state.value.message.orEmpty().startsWith("Restored."))
+
+        // OQ-24 c: entries older than the restore show "from backup".
+        vm.refreshHistory()
+        idle()
+        val restoredAt = assertNotNull(vm.state.value.restoredAt)
+        assertTrue(vm.state.value.history.single { it.id == "old-phone" }.timestamp < restoredAt)
+        // Only the old phone's entry, so it is on screen whatever else History holds.
+        val shown = vm.state.value.let { st -> st.copy(history = st.history.filter { it.id == "old-phone" }) }
+        compose.setContent { HistoryScreen(shown, {}, {}) }
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodes(hasText("from backup", substring = true), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
+
+        // OQ-24 d: tomorrow came in with the backup; opening it plans it again, once.
+        assertEquals("old", runBlocking { graph.plans.get(tomorrow) }?.plannerVersion)
+        val plansBefore = graph.audit.entries.count { it.action == "plan.generate" }
+        vm.selectDate(tomorrow)
+        idle()
+        assertEquals(plansBefore + 1, graph.audit.entries.count { it.action == "plan.generate" })
+        assertTrue(runBlocking { graph.plans.get(tomorrow) }?.plannerVersion != "old")
+        vm.selectDate(tomorrow.minusDays(1))
+        vm.selectDate(tomorrow)
+        idle()
+        assertEquals(plansBefore + 1, graph.audit.entries.count { it.action == "plan.generate" }, "only the first view")
     }
 }
