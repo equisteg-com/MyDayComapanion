@@ -1,5 +1,8 @@
 package com.equisteg.mydaycompanion.ui
 
+import com.equisteg.mydaycompanion.domain.ai.LocalModelStatus
+import com.equisteg.mydaycompanion.domain.ai.ModelDownload
+import kotlinx.coroutines.CancellationException
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -90,6 +93,11 @@ data class UiState(
     /** False until preferences are read, so first-run setup does not flash for returning owners. */
     val preferencesLoaded: Boolean = false,
     val calendarInPlans: Boolean = false,
+    /** The owner's "use Gemini Nano" switch and what the phone says about the model (null while checking). */
+    val smartModel: Boolean = true,
+    val modelStatus: LocalModelStatus? = null,
+    /** Shown under the switch while the phone downloads the model. */
+    val modelDownload: String? = null,
 ) {
     val showOnboarding: Boolean get() = preferencesLoaded && !preferences.onboardingDone
 }
@@ -106,6 +114,9 @@ class MainViewModel(
     // Starts locked so nothing shows before the security settings are read; unlocks at once when the app lock is off.
     private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** The LOCAL_LLM flag hides the Gemini Nano settings as well as turning the model off. */
+    val smartModelAllowed: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.LOCAL_LLM)
 
     /** The VOICE kill switch covers the microphone as well as spoken replies. */
     val voiceEnabled: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.VOICE)
@@ -136,8 +147,10 @@ class MainViewModel(
                     preferences = prefs,
                     preferencesLoaded = true,
                     calendarInPlans = services.deviceSettings.calendarInPlans,
+                    smartModel = services.deviceSettings.smartModel,
                 )
             }
+            refreshModelStatus()
             // Today's routine tasks and reminders; also re-run each night by the maintenance alarm.
             if (prefs.onboardingDone) services.maintenance.run()
         }
@@ -187,6 +200,39 @@ class MainViewModel(
     }
 
     /** "Show my calendar in plans". Turning it on asks for calendar access first (the activity does that). */
+    fun onSmartModel(enabled: Boolean) {
+        services.deviceSettings.smartModel = enabled
+        _state.update { it.copy(smartModel = enabled) }
+    }
+
+    /** Asks the phone's AICore service to download Gemini Nano; this app itself never goes online. */
+    fun onDownloadModel() {
+        viewModelScope.launch {
+            _state.update { it.copy(modelDownload = "Starting the download…", modelStatus = LocalModelStatus.DOWNLOADING) }
+            services.localModel.download().collect { step ->
+                val text = when (step) {
+                    ModelDownload.Started -> "Starting the download…"
+                    is ModelDownload.Progress -> "Downloading… ${step.bytes / 1_000_000} MB so far"
+                    ModelDownload.Done -> null
+                    ModelDownload.Failed -> "The download stopped. Try again on Wi-Fi with enough free space."
+                }
+                _state.update { it.copy(modelDownload = text) }
+            }
+            refreshModelStatus()
+        }
+    }
+
+    private suspend fun refreshModelStatus() {
+        val status = try {
+            services.localModel.status()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            LocalModelStatus.UNAVAILABLE
+        }
+        _state.update { it.copy(modelStatus = status) }
+    }
+
     fun onCalendarInPlans(enabled: Boolean) = launchBusy {
         services.deviceSettings.calendarInPlans = enabled
         _state.update { it.copy(calendarInPlans = enabled) }

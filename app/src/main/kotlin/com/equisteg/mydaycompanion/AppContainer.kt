@@ -17,7 +17,10 @@ import com.equisteg.mydaycompanion.data.repository.RoomSecurityStore
 import com.equisteg.mydaycompanion.data.repository.RoomTaskRepository
 import com.equisteg.mydaycompanion.domain.agent.AgentOrchestrator
 import com.equisteg.mydaycompanion.domain.agent.DailyMaintenance
+import com.equisteg.mydaycompanion.ai.MlKitNanoEngine
 import com.equisteg.mydaycompanion.domain.ai.AiInferenceRouter
+import com.equisteg.mydaycompanion.domain.ai.LocalModelControl
+import com.equisteg.mydaycompanion.domain.ai.OnDeviceLlmProvider
 import com.equisteg.mydaycompanion.domain.ai.ContextBuilder
 import com.equisteg.mydaycompanion.domain.ai.RuleBasedTaskExtractor
 import com.equisteg.mydaycompanion.domain.audit.AuditLog
@@ -78,8 +81,11 @@ interface AppServices {
     val preferences: PreferencesStore
     val routines: RoutineRepository
 
-    /** Owner switches kept on the phone only: "show my calendar in plans". */
+    /** Owner switches kept on the phone only: "show my calendar in plans", "use Gemini Nano". */
     val deviceSettings: DeviceSettings
+
+    /** Status and download of the phone's on-device model (Gemini Nano), for Settings. */
+    val localModel: LocalModelControl
 
     /** Adds routine tasks, replans and re-registers reminders; run on open, after restarts and each night. */
     val maintenance: DailyMaintenance
@@ -91,6 +97,15 @@ interface AppServices {
 /** Small owner switches that are not part of the encrypted data (they hold no personal content). */
 interface DeviceSettings {
     var calendarInPlans: Boolean
+
+    /** Use the phone's Gemini Nano to understand typed and spoken text, where the phone has it. */
+    var smartModel: Boolean
+
+    /** Back to the defaults; part of "Delete everything" and the panic wipe. */
+    fun reset() {
+        calendarInPlans = false
+        smartModel = true
+    }
 }
 
 class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
@@ -98,6 +113,9 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var calendarInPlans: Boolean
         get() = prefs.getBoolean("calendar_in_plans", false)
         set(value) = prefs.edit().putBoolean("calendar_in_plans", value).apply()
+    override var smartModel: Boolean
+        get() = prefs.getBoolean("smart_model", true)
+        set(value) = prefs.edit().putBoolean("smart_model", value).apply()
 }
 
 /**
@@ -127,6 +145,8 @@ class AppContainer(context: Context) : AppServices {
     private val calendar by lazy {
         ContentResolverCalendarProvider(appContext, { clock.zone }) { flags.isEnabled(Flag.CALENDAR_READ) && deviceSettings.calendarInPlans }
     }
+    private val nano by lazy { MlKitNanoEngine() }
+    override val localModel: LocalModelControl get() = nano
     private val launcher by lazy { AndroidDeviceActionLauncher(appContext) { clock.zone } }
     private val speaker by lazy { AndroidSpeaker(appContext) }
     private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
@@ -139,7 +159,7 @@ class AppContainer(context: Context) : AppServices {
     }
 
     override fun wipeLocalStorage(): Boolean =
-        runCatching { scheduler.cancelEverything(); deviceSettings.calendarInPlans = false }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+        runCatching { scheduler.cancelEverything(); deviceSettings.reset() }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
 
     override val orchestrator: AgentOrchestrator by lazy {
         val ids = IdGenerator.RANDOM
@@ -150,11 +170,14 @@ class AppContainer(context: Context) : AppServices {
             stores = listOf(tasks, events, plans, routines, memories, audit, preferences, security),
             platformWipe = {
                 scheduler.cancelAll()
-                deviceSettings.calendarInPlans = false
+                deviceSettings.reset()
             },
         )
         AgentOrchestrator(
-            router = AiInferenceRouter(providers = listOf(rules), fallback = rules),
+            router = AiInferenceRouter(
+                providers = listOf(OnDeviceLlmProvider(nano) { flags.isEnabled(Flag.LOCAL_LLM) && deviceSettings.smartModel }, rules),
+                fallback = rules,
+            ),
             contextBuilder = ContextBuilder(),
             planner = planner,
             registry = ToolRegistry(

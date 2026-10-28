@@ -49,7 +49,7 @@ class ToolAuthorizationPolicyTest {
 
     @Test
     fun `disabled feature is denied`() {
-        assertEquals(DenyReason.FEATURE_DISABLED, (decide(spec(RiskLevel.L1, flag = Flag.LOCAL_LLM.key)) as PolicyDecision.Deny).reason)
+        assertEquals(DenyReason.FEATURE_DISABLED, (decide(spec(RiskLevel.L1, flag = Flag.CLOUD_AI.key)) as PolicyDecision.Deny).reason)
     }
 
     @Test

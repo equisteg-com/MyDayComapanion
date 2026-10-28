@@ -28,7 +28,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.config.Flag
+import com.equisteg.mydaycompanion.domain.ai.LocalModelStatus
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.UiState
 
 @Composable
 fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
@@ -108,6 +110,11 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             style = MaterialTheme.typography.bodySmall,
         )
 
+        if (viewModel.smartModelAllowed) {
+            HorizontalDivider()
+            SmartModelSection(state, viewModel::onSmartModel, viewModel::onDownloadModel)
+        }
+
         HorizontalDivider()
         Text("Permissions", style = MaterialTheme.typography.titleMedium)
         Text(
@@ -131,5 +138,45 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
             Text("${f.key.replace('_', ' ')}: $status", style = MaterialTheme.typography.bodySmall)
         }
+    }
+}
+
+/**
+ * Gemini Nano (build doc D-03). Runs in the phone's AICore service on supported phones; the
+ * built-in rules understand tasks everywhere else and whenever the model's answer doesn't check out.
+ */
+@Composable
+private fun SmartModelSection(state: UiState, onToggle: (Boolean) -> Unit, onDownload: () -> Unit) {
+    Text("Smarter understanding", style = MaterialTheme.typography.titleMedium)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text("Use Gemini Nano on this phone")
+            Text(
+                "Understands looser wording and more kinds of dates. It runs on the phone; your words are never sent online. " +
+                    "Its answers are checked like everything else, and you still approve each plan.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Switch(
+            checked = state.smartModel,
+            onCheckedChange = onToggle,
+            enabled = !state.busy && state.modelStatus != null && state.modelStatus != LocalModelStatus.UNAVAILABLE,
+            modifier = Modifier.testTag("smart-toggle"),
+        )
+    }
+    Text(
+        when (state.modelStatus) {
+            null -> "Checking this phone…"
+            LocalModelStatus.AVAILABLE -> if (state.smartModel) "Ready. Gemini Nano is understanding your tasks." else "Ready, but switched off. The built-in rules are used."
+            LocalModelStatus.DOWNLOADABLE -> "This phone can use Gemini Nano. Android's AICore service downloads it once (the app itself stays offline)."
+            LocalModelStatus.DOWNLOADING -> state.modelDownload ?: "Android is downloading Gemini Nano…"
+            LocalModelStatus.UNAVAILABLE -> "This phone doesn't support Gemini Nano. The built-in rules understand your tasks instead."
+        },
+        style = MaterialTheme.typography.bodySmall,
+        modifier = Modifier.testTag("model-status"),
+    )
+    if (state.modelStatus == LocalModelStatus.DOWNLOADABLE) {
+        state.modelDownload?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+        OutlinedButton(onClick = onDownload, enabled = !state.busy, modifier = Modifier.testTag("model-download")) { Text("Download Gemini Nano") }
     }
 }

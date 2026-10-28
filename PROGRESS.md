@@ -1,5 +1,19 @@
 # Progress
 
+## 2026-10-28 — Gemini Nano (founder decision D-03)
+
+- On phones with Gemini Nano (Android AICore), typed and spoken text is understood by the model through ML Kit's
+  Prompt API (`com.google.mlkit:genai-prompt` 1.0.0-beta4, ML Kit Terms accepted by the founder). Elsewhere, and
+  whenever the model's answer is not valid task-extraction/v2 JSON or takes longer than 12 s, the rule extractor
+  answers as before. The owner still approves every plan.
+- The owner's text is fenced as data in the prompt (prompt v3) and cannot close the fence. Model output goes
+  through the same schema, domain and content-safety checks as before; no tool or permission changed.
+- Settings → Smarter understanding: on/off switch (on by default), the phone's status, and a Download button that
+  asks AICore to fetch the model. The app still has no INTERNET permission. "Delete everything" resets the switch.
+- The model is used down to 15% battery (it is classed as a small local model) and never in severe heat.
+- NEEDS HUMAN: run the golden phrases on a phone that Google lists as supporting Gemini Nano and compare with
+  the rules; CI cannot run the model.
+
 ## 2026-10-28 — Agent OS part 5: voice, calendar, device actions
 
 - Voice (F6): 🎤 on My day fills the input box from speech; nothing runs until "Plan it". On-device recognition

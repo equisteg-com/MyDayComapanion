@@ -9,7 +9,7 @@ enum class Flag(val key: String, val defaultEnabled: Boolean, val locked: Boolea
     VOICE("voice", defaultEnabled = true),
     CALENDAR_READ("calendar_read", defaultEnabled = true),
     ROUTINES("routines", defaultEnabled = true),
-    LOCAL_LLM("local_llm", defaultEnabled = false),
+    LOCAL_LLM("local_llm", defaultEnabled = true),
 
     CLOUD_AI("cloud_ai", defaultEnabled = false, locked = true),
     CLOUD_SYNC("cloud_sync", defaultEnabled = false, locked = true),

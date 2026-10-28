@@ -53,7 +53,7 @@ What the subscription check changes in the app:
 | F13 Backup and moving to a new phone | Phone; the owner keeps a passphrase-encrypted file wherever they like | Not yet (part 6) |
 | F14 Theft protection | Phone (Keystore, lockout, wipe) + Google's Find My Device | Local parts yes; settings polish in part 6 |
 | F19 Home-screen widget | Phone | Not yet (part 6) |
-| D-03a/b On-device AI model (Gemini Nano or Gemma) | Phone; a Gemma model would download through Play Asset Delivery, which needs no server of ours | Not built (founder decision D-03) |
+| D-03a/b On-device AI model (Gemini Nano or Gemma) | Phone: Gemini Nano runs in Android's AICore service, which also downloads it; no server of ours. Gemma not used | Yes (Gemini Nano, supported phones; rules elsewhere) |
 | D-05 Direct phone-to-phone transfer | Phone (Nearby Connections) | Not built |
 
 ## 4. Infrastructure that is not part of the app

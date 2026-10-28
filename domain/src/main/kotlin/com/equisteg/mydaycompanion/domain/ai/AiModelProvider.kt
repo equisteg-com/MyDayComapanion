@@ -33,7 +33,8 @@ data class AiRequest(
     /** Reference values the model may use, e.g. today's date. */
     val context: Map<String, String> = emptyMap(),
     val maxOutputChars: Int = 4_000,
-    val timeoutMillis: Long = 5_000,
+    /** Long enough for an on-device LLM on a mid-range phone; the rule extractor answers at once. */
+    val timeoutMillis: Long = 12_000,
 )
 
 sealed interface AiResult {

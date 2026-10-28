@@ -6,8 +6,8 @@ and makes no network calls (the app has no INTERNET permission regardless).
 | ID | Check | Status | Evidence / resolution |
 |---|---|---|---|
 | DL-01 | Inventory complete | PASS | Tables below match the version catalog. |
-| DL-02 | Licences acceptable | PASS | Apache-2.0, BSD-style, MIT; EPL-1.0/2.0 only in test scope. |
-| DL-03 | No paid / telemetry / network SDKs | PASS | None present. |
+| DL-02 | Licences acceptable | PASS (one founder-approved exception) | Apache-2.0, BSD-style, MIT; EPL-1.0/2.0 only in test scope. Exception: ML Kit GenAI Prompt API under the ML Kit Terms of Service (Google APIs Terms), accepted by the founder on 2026-10-28 for Gemini Nano (D-03). |
+| DL-03 | No paid / telemetry / network SDKs | PASS with note | No paid SDK. ML Kit may include Google's usage-logging components; the APK has no INTERNET or ACCESS_NETWORK_STATE permission (checked in CI), so nothing can be sent from the app. The model itself is run and downloaded by Android's AICore system service. |
 | DL-04 | Transitive review | PASS (CI) | `dependency-scan` job writes `app/gradle.lockfile` for the release runtime classpath and runs OSV-Scanner. |
 
 ## Shipped in the app
@@ -26,6 +26,7 @@ and makes no network calls (the app has no INTERNET permission regardless).
 | androidx.room (runtime, ktx; compiler at build time) | 2.7.2 | Apache-2.0 | Local database |
 | androidx.sqlite | 2.5.2 | Apache-2.0 | SQLite support API |
 | net.zetetic:sqlcipher-android | 4.10.0 | BSD-style (Zetetic community licence) | Database encryption; adds native libs (~3–4 MB per ABI) |
+| com.google.mlkit:genai-prompt | 1.0.0-beta4 | ML Kit Terms of Service (proprietary, free; founder-approved 2026-10-28) | Gemini Nano on supported phones (D-03). beta5 needs Kotlin 2.3. Output is untrusted and schema-validated; the rule extractor is the fallback |
 
 ## Build / test only (not shipped)
 
