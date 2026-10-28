@@ -80,6 +80,11 @@ jobs:
       - name: Local-first check on the merged APK manifest
         run: |
           AAPT2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
+          # What a phone needs to install this APK (SDK levels, required libraries and features, native ABIs, signer),
+          # printed so an "App not installed" on a test phone can be checked against the log.
+          "$AAPT2" dump badging app/build/outputs/apk/debug/app-debug.apk | grep -E "^(package|sdkVersion|targetSdkVersion|uses-library|uses-feature|native-code|alt-native-code|application-debuggable|testOnly)" || true
+          APKSIGNER="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner"
+          "$APKSIGNER" verify --print-certs -v app/build/outputs/apk/debug/app-debug.apk | grep -E "Verified using|Signer #1 certificate SHA-256|DOES NOT VERIFY|ERROR" || true
           "$AAPT2" dump permissions app/build/outputs/apk/debug/app-debug.apk | tee permissions.txt
           if grep -E "android.permission.(INTERNET|ACCESS_NETWORK_STATE)" permissions.txt; then
             echo "::error::The APK requests network access. V1 must have no network path."
