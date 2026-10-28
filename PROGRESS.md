@@ -1,5 +1,23 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 7b: smarter agent
+
+- My day is a short chat. Typed (or spoken) lines are first checked against fixed command rules on the phone
+  (`AgentCommandParser`), never the model; anything that isn't a command goes to the planner as before.
+- "What's next?" / "What now?" answers Now / Next from today's plan; "What's left?" says how many are done and
+  names up to three open tasks. Quick chips under the input ask the same.
+- "Move gym to Friday", "push call Raj to 4pm", "reschedule dentist to tomorrow 3pm", "postpone report" (=
+  tomorrow): `TaskMatcher` finds the open task (exact title, then contains, then all words); when several match
+  the agent asks which one. The move is offered as a card; "Move" runs `tasks.update` through the orchestrator as
+  the agent, so the owner's tap is the approval and a personal task still needs the screen lock.
+- Roll-over: new tool `tasks.rollOver` (L2, agent-proposable, at most 50 tasks) moves open, non-routine tasks from
+  earlier days (and their steps) to a new day; a banner on today offers it for the last 14 days.
+- Focus timer: "focus 25 min on report", "focus" (25 min) or the chip under Now. In-app only (OQ-27). When it ends
+  the agent offers to mark the task done.
+- Privacy: the chat is kept in memory only (last 20 lines), is never written to History or the database, and is
+  cleared when the app locks. Audit entries for moves and roll-overs carry only counts and ids.
+- No new permission, dependency or database change.
+
 ## 2026-10-28 — Agent OS part 7a: new look
 
 - A new palette ("calm dawn": deep teal for tasks, apricot for fixed events, violet for the agent), rounder shapes

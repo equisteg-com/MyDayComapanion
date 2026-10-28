@@ -42,6 +42,7 @@ graceful behaviour when denied.
 | `plan.generate` | L1 | yes | never | — | — | re-read + `PlanValidator` |
 | `tasks.complete` / `tasks.reopen` | L1 | yes | when proposed by agent; always for a personal task | — | — | status is DONE / OPEN |
 | `tasks.update` | L2 | yes | when proposed by agent; always for a personal task | — | — | every field re-read and equal |
+| `tasks.rollOver` (to today … today + 14 days, max 50) | L2 | yes | when proposed by agent; always if any listed task is personal | — | — | every listed task (and its steps) is on the new day |
 | `tasks.delete` | L2 | yes | always | — | — | task and its subtasks can no longer be read |
 | `tasks.addSubtask` | L2 | yes | when proposed by agent; always under a personal task | — | — | new subtask re-read with its parent |
 | `settings.update` | L1 | **no** | never | — | — | stored preferences equal requested |

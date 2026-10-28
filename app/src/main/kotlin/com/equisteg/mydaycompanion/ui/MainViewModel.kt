@@ -8,7 +8,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.equisteg.mydaycompanion.AppServices
+import com.equisteg.mydaycompanion.domain.agent.AgentCommand
+import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
 import com.equisteg.mydaycompanion.domain.agent.AgentProposal
+import com.equisteg.mydaycompanion.domain.agent.AgentReplies
+import com.equisteg.mydaycompanion.domain.agent.TaskMatch
+import com.equisteg.mydaycompanion.domain.agent.TaskMatcher
 import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
@@ -44,6 +49,7 @@ import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSettingsTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateTaskTool
+import com.equisteg.mydaycompanion.domain.tools.RollOverTasksTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateSecuritySettingsTool
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -78,6 +84,27 @@ data class PendingConfirmation(
     val body: String,
     val steps: List<ApprovalStep> = listOf(ApprovalStep.TAP),
 )
+
+/** One line of the chat with the agent. Kept in memory only, never stored or written to History. */
+data class ChatTurn(val fromOwner: Boolean, val text: String)
+
+/**
+ * Something the agent offers to do (UPD-011): a move, a roll-over, or "mark it done" after a focus
+ * session. Nothing happens until the owner taps [actionLabel]; that tap is the approval.
+ */
+data class AgentSuggestion(
+    val text: String,
+    val actionLabel: String,
+    val action: ProposedAction,
+    /** For a move: the task as it was when offered; the move is dropped if the task changed since. */
+    val basedOn: Task? = null,
+)
+
+/** The agent found several tasks for a name and asks which one; [move] is applied to the one picked. */
+data class TaskChoice(val text: String, val options: List<Task>, val move: AgentCommand.Move)
+
+/** A focus session; [endsAtMillis] uses the app's clock. Nothing is saved. */
+data class FocusSession(val minutes: Int, val endsAtMillis: Long, val taskId: String?, val title: String?, val remainingSeconds: Long)
 
 enum class AuthPurpose { UNLOCK, APPROVE }
 
@@ -130,6 +157,11 @@ data class UiState(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     /** Wallpaper colours (Material You), Android 12 and later. */
     val dynamicColor: Boolean = false,
+    /** The chat with the agent on My day, newest last (at most [MainViewModel.CHAT_KEPT] lines). */
+    val chat: List<ChatTurn> = emptyList(),
+    val suggestion: AgentSuggestion? = null,
+    val choice: TaskChoice? = null,
+    val focus: FocusSession? = null,
 ) {
     val proposedMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.PROPOSED }
     val keptMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.ACTIVE }
@@ -327,13 +359,187 @@ class MainViewModel(
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, message = null) }
 
-    fun onSubmit() = launchBusy {
-        when (val p = services.orchestrator.propose(_state.value.input)) {
-            is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = null) }
+    fun onSubmit() = submit(_state.value.input, fromInput = true)
+
+    /** A quick question from the chips under the input ("What's next?"); what the owner typed stays. */
+    fun onAsk(text: String) = submit(text, fromInput = false)
+
+    private fun submit(raw: String, fromInput: Boolean) = launchBusy {
+        val text = raw.trim()
+        if (text.isEmpty()) return@launchBusy
+        // Questions and commands ("what's next", "move gym to friday", "focus 25 min") are read by
+        // fixed rules first; anything else goes to the planner as before.
+        val command = AgentCommandParser(_state.value.preferences.dateOrder).parse(text, today(), nowTime())
+        if (command != null) {
+            chat(owner = true, text)
+            if (handle(command)) {
+                _state.update { if (fromInput) it.copy(input = "", message = null) else it.copy(message = null) }
+                return@launchBusy
+            }
+            // Not a task the agent knows (e.g. "move the car to the garage tomorrow"): plan it instead.
+            _state.update { it.copy(chat = it.chat.dropLast(1)) }
+        }
+        when (val p = services.orchestrator.propose(text)) {
+            is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = null, suggestion = null, choice = null) }
             is AgentProposal.NotUnderstood -> _state.update { it.copy(message = p.reason) }
             AgentProposal.Empty -> Unit
         }
     }
+
+    private fun chat(owner: Boolean, text: String) =
+        _state.update { it.copy(chat = (it.chat + ChatTurn(owner, text)).takeLast(CHAT_KEPT)) }
+
+    /** True when the command was answered; false sends the text to the planner instead. */
+    private suspend fun handle(command: AgentCommand): Boolean {
+        val today = today()
+        when (command) {
+            AgentCommand.WhatsNext -> chat(owner = false, AgentReplies.whatsNext(services.plans.get(today), services.tasks.all(), nowTime()))
+            AgentCommand.DaySummary -> chat(owner = false, AgentReplies.daySummary(services.tasks.all(), today))
+            AgentCommand.RollOver -> offerRollOver()
+            is AgentCommand.Focus -> {
+                val match = command.query?.let { TaskMatcher.find(it, services.tasks.all(), today) }
+                startFocus(command.minutes, (match as? TaskMatch.One)?.task)
+                if (match is TaskMatch.Many) chat(owner = false, "Several tasks fit, so this focus isn't tied to one. Use the chip under Now to focus on a task.")
+            }
+            is AgentCommand.Move -> when (val match = TaskMatcher.find(command.query, services.tasks.all(), _state.value.selectedDate)) {
+                TaskMatch.None -> return false
+                is TaskMatch.Many -> {
+                    val text = "Which one do you mean?"
+                    chat(owner = false, text)
+                    _state.update { it.copy(choice = TaskChoice(text, match.tasks, command), suggestion = null) }
+                }
+                is TaskMatch.One -> offerMove(match.task, command)
+            }
+        }
+        return true
+    }
+
+    /** The owner picked one of the tasks the agent asked about. */
+    fun onChoose(taskId: String) = launchBusy {
+        val choice = _state.value.choice ?: return@launchBusy
+        val task = choice.options.firstOrNull { it.id == taskId } ?: return@launchBusy
+        _state.update { it.copy(choice = null) }
+        offerMove(task, choice.move)
+    }
+
+    private fun offerMove(task: Task, move: AgentCommand.Move) {
+        val today = today()
+        // A time-only move of an overdue task brings it to today.
+        val date = move.date ?: task.date?.takeIf { it >= today } ?: today
+        if (date < today) {
+            chat(owner = false, "That day has already passed. Pick today or a later day.")
+            return
+        }
+        val dateChanged = date != task.date
+        val updated = task.copy(
+            date = date,
+            preferredStart = move.time ?: task.preferredStart,
+            deadline = task.deadline?.let { if (dateChanged) date.atTime(it.toLocalTime()) else it },
+        )
+        val text = "Move \"${task.title}\" to ${AgentReplies.whenText(date, move.time, today)}?"
+        chat(owner = false, "$text Tap Move to do it.")
+        _state.update { it.copy(suggestion = AgentSuggestion(text, "Move", ProposedAction("tasks.update", UpdateTaskTool.args(updated)), basedOn = task), choice = null) }
+    }
+
+    private suspend fun offerRollOver() {
+        val today = today()
+        val left = rollOverCandidates(today)
+        if (left.isEmpty()) {
+            chat(owner = false, "Nothing unfinished from earlier days.")
+            return
+        }
+        chat(owner = false, "${AgentReplies.rollOver(left)} Tap Move to bring them to today.")
+        // The card names every task it will move, so the owner's tap approves exactly what they saw.
+        val names = left.joinToString(", ") { "\"${it.title}\"" }
+        _state.update {
+            it.copy(suggestion = AgentSuggestion("Move to today: $names?", "Move", ProposedAction("tasks.rollOver", RollOverTasksTool.args(today, left))))
+        }
+    }
+
+    private suspend fun rollOverCandidates(today: LocalDate): List<Task> =
+        services.tasks.all().filter { RollOverTasksTool.movable(it, today) && it.date!! >= today.minusDays(ROLL_OVER_DAYS) }
+            .sortedWith(compareBy({ it.date }, { it.createdAt }))
+            .take(RollOverTasksTool.MAX_TASKS)
+
+    /** The banner on today: shows a card listing the unfinished tasks; the card's Move tap is the approval. */
+    fun onRollOver() = launchBusy { offerRollOver() }
+
+    /** The owner tapped the suggestion's button: that tap approves exactly what the card showed. */
+    fun onAcceptSuggestion() = launchBusy {
+        val suggestion = _state.value.suggestion ?: return@launchBusy
+        approve(suggestion)
+    }
+
+    fun onDismissSuggestion() = _state.update { it.copy(suggestion = null, choice = null) }
+
+    private suspend fun approve(suggestion: AgentSuggestion) {
+        _state.update { it.copy(suggestion = null) }
+        suggestion.basedOn?.let { offered ->
+            // The move carries the whole task as it was offered; never write it back over a later edit.
+            if (services.tasks.get(offered.id) != offered) {
+                chat(owner = false, "That task changed since I offered this, so I left it. Ask me again.")
+                return
+            }
+        }
+        when (val r = services.orchestrator.execute(suggestion.action, Requester.AGENT)) {
+            is ExecutionResult.NeedsConfirmation -> {
+                val s = _state.value
+                // The tap on the card was the Confirm step; a personal task still asks for the owner's verification.
+                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges) - ApprovalStep.TAP
+                advance(PendingConfirmation(suggestion.action, r.actionFingerprint, suggestion.text, "This includes a personal task.", steps))
+            }
+            is ExecutionResult.Done -> replanAfter(suggestion.action)
+            else -> _state.update { it.copy(message = describe(r)) }
+        }
+    }
+
+    /** Starts a focus session; it lives only in memory, and the owner can stop it at any time. */
+    fun onStartFocus(minutes: Int, taskId: String?) = launchBusy {
+        startFocus(minutes, taskId?.let { services.tasks.get(it) })
+    }
+
+    private fun startFocus(minutes: Int, task: Task?) {
+        val ends = services.clock.millis() + minutes * 60_000L
+        _state.update { it.copy(focus = FocusSession(minutes, ends, task?.id, task?.title, minutes * 60L), suggestion = null) }
+        chat(owner = false, "Focus for $minutes minutes" + (task?.let { " on \"${it.title}\"" } ?: "") + ". I'll tell you when time's up.")
+        focusJob?.cancel()
+        focusJob = viewModelScope.launch {
+            while (_state.value.focus != null) {
+                delay(1_000)
+                onFocusTick()
+            }
+        }
+    }
+
+    /** Recounts the focus time left; at zero the session ends and the agent offers to mark the task done. */
+    fun onFocusTick() {
+        if (_state.value.locked) return
+        val focus = _state.value.focus ?: return
+        val left = (focus.endsAtMillis - services.clock.millis()).coerceAtLeast(0) / 1_000
+        if (left > 0) {
+            _state.update { s -> s.copy(focus = s.focus?.copy(remainingSeconds = left)) }
+            return
+        }
+        finishFocus(focus)
+    }
+
+    internal fun finishFocus(focus: FocusSession) {
+        _state.update { it.copy(focus = null) }
+        val text = "Time's up: ${focus.minutes} minutes of focus done."
+        chat(owner = false, text)
+        val task = focus.taskId
+        if (task != null && focus.title != null) {
+            // An open card the owner hasn't answered yet stays; the chat line already says time's up.
+            _state.update { s -> if (s.suggestion != null) s else s.copy(suggestion = AgentSuggestion("Mark \"${focus.title}\" done?", "Mark done", ProposedAction("tasks.complete", args("taskId" to task)))) }
+        }
+    }
+
+    fun onStopFocus() {
+        focusJob?.cancel()
+        _state.update { it.copy(focus = null) }
+    }
+
+    private var focusJob: kotlinx.coroutines.Job? = null
 
     /** Words from press-to-talk go into the input box; nothing runs until the owner taps "Plan it". */
     fun onVoiceText(text: String) = _state.update { it.copy(input = listOf(it.input.trim(), text.trim()).filter(String::isNotEmpty).joinToString(" "), message = null) }
@@ -828,7 +1034,8 @@ class MainViewModel(
         if (settings.appLockEnabled && Duration.between(since, services.clock.instant()) >= Duration.ofMinutes(settings.lockAfterMinutes.toLong())) {
             discardStaged(_state.value.pending?.action)
             onCancelBackupPrompt()
-            _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null) }
+            focusJob?.cancel()
+            _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null, chat = emptyList(), suggestion = null, choice = null, focus = null) }
         }
     }
 
@@ -1008,7 +1215,7 @@ class MainViewModel(
     /** Rebuilds the shown day, and the day a task was moved to. */
     private suspend fun replanAfter(action: ProposedAction) {
         replan()
-        val movedTo = (action.args["date"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val movedTo = ((action.args["date"] ?: action.args["to"]) as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
         if (movedTo != null && movedTo != _state.value.selectedDate) replan(movedTo)
     }
 
@@ -1049,6 +1256,12 @@ class MainViewModel(
         const val HISTORY_SHOWN = 300
 
         private const val MINUTE_MS = 60_000L
+
+        /** Chat lines kept on screen; older ones are dropped. */
+        const val CHAT_KEPT = 20
+
+        /** How far back "roll over" looks for unfinished tasks. */
+        const val ROLL_OVER_DAYS = 14L
 
         /** Wrong backup passphrases in a row before Restore closes for [RESTORE_LOCK] (build doc §7.3). */
         const val MAX_RESTORE_FAILURES = 10

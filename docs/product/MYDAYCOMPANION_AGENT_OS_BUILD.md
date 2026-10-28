@@ -424,6 +424,7 @@ app/
 | `tasks.update` (title, date, time, duration, priority, notes, parent) | L2 | yes | tap when agent-proposed |
 | `tasks.delete` (one task) | L2 | yes | tap always |
 | `tasks.complete` / `tasks.reopen` | L1 | yes | tap when agent-proposed |
+| `tasks.rollOver` (open, non-routine tasks from earlier days, with their steps, to today or up to 14 days ahead; max 50) | L2 | yes | tap when agent-proposed; screen lock if any is personal |
 | `plan.generate` | L1 | yes | never |
 | `routines.save` / `routines.delete` | L2 | yes | tap |
 | `reminders.schedule` / `reminders.cancel` | L1 | yes | never (owner approved the item) |
@@ -552,6 +553,8 @@ Earlier open questions OQ-01…OQ-14 in `docs/prebuild/12-open-questions.md` sti
 | 4 | follow-up | F4 reminders (AlarmManager, boot, notification actions), F5 routines + daily WorkManager job, standing approvals |
 | 5 | follow-up | F6 voice, F7 calendar read, F8 device actions |
 | 6 | follow-up | F9 memory review, F13 backup/restore, F14 theft-protection settings, F16 history filters, F19 widget |
+| 7a | follow-up | New look (palette, light/dark, My day redesign, last-7-days insights) — founder request "best advanced aesthetic UI" (2026-10-28) |
+| 7b | follow-up | Smarter agent on My day: chat answers (what's next / left), move by chat (F2), roll-over of unfinished tasks (§6.5, `tasks.rollOver`), focus timer — founder request "more to make a powerful agentic AI product" (2026-10-28); focus timer limits in OQ-27 |
 
 Each PR updates `PROGRESS.md`, `CHANGELOG.md`, the test-case workbook, `docs/prebuild/06` (permissions) and `11` (dependencies) where relevant.
 

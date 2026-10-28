@@ -4,7 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -80,11 +80,11 @@ class NewLookUiTest {
         compose.onNodeWithTag("hero-now").assertTextContains("Write the report", substring = true)
         compose.onNodeWithTag("hero-next").assertTextContains("Team call", substring = true)
 
-        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("insights"))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("insights"))
         compose.onNodeWithTag("insights-summary").assertTextContains("2 done in the last 7 days · 2-day streak · 20 min finished today")
 
         // Another day has no Now / Next and offers a way back to today.
-        compose.onNode(hasScrollAction()).performScrollToNode(hasTestTag("day-title"))
+        compose.onNode(hasScrollToIndexAction()).performScrollToNode(hasTestTag("day-title"))
         compose.onNodeWithTag("day-next").performClick()
         compose.waitUntil(5_000) { compose.onAllNodesWithTagPresent("day-today") }
         assertTrue(!compose.onAllNodesWithTagPresent("hero-now"))

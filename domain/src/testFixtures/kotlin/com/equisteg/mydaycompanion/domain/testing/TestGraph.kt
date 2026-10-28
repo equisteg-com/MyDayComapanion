@@ -34,6 +34,7 @@ import com.equisteg.mydaycompanion.domain.tools.Speaker
 import com.equisteg.mydaycompanion.domain.tools.DeleteRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.MaterializeRoutinesTool
 import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
+import com.equisteg.mydaycompanion.domain.tools.RollOverTasksTool
 import com.equisteg.mydaycompanion.domain.tools.SyncRemindersTool
 import com.equisteg.mydaycompanion.domain.tools.UpdateRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.SetChallengeQuestionsTool
@@ -116,6 +117,7 @@ class TestGraph(
             GeneratePlanTool(tasks, events, plans, preferences, planner, calendar),
             CompleteTaskTool(tasks, clock),
             ReopenTaskTool(tasks, clock),
+            RollOverTasksTool(tasks, clock),
             UpdateTaskTool(tasks, clock),
             DeleteTaskTool(tasks),
             AddSubtaskTool(tasks, ids, clock),
