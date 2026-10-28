@@ -35,6 +35,8 @@ class BackupCodec(
         val nonce = ByteArray(NONCE_BYTES).also(random::nextBytes)
         val header = header(iterations, salt, nonce)
         val cipher = Cipher.getInstance(TRANSFORMATION)
+        // A fresh random 12-byte nonce and a fresh random salt (so a fresh key) for every file: a nonce is never reused with a key.
+        // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
         cipher.init(Cipher.ENCRYPT_MODE, key(passphrase, salt, iterations), GCMParameterSpec(TAG_BITS, nonce))
         cipher.updateAAD(header)
         return header + cipher.doFinal(plaintext)
@@ -57,6 +59,8 @@ class BackupCodec(
             val body = file.copyOfRange(headerLength, file.size)
             if (body.size < TAG_BITS / 8) return Decrypted.Unreadable("TRUNCATED")
             val cipher = Cipher.getInstance(TRANSFORMATION)
+            // Decrypt only: the nonce is the one encrypt() generated for this file; it is never used to encrypt again.
+            // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
             cipher.init(Cipher.DECRYPT_MODE, key(passphrase, salt, iters), GCMParameterSpec(TAG_BITS, nonce))
             cipher.updateAAD(file, 0, headerLength)
             return Decrypted.Ok(cipher.doFinal(body))
