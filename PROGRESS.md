@@ -3,8 +3,8 @@
 ## 2026-10-28 — Agent OS part 5: voice, calendar, device actions
 
 - Voice (F6): 🎤 on My day fills the input box from speech; nothing runs until "Plan it". On-device recognition
-  where the phone has it (Android 12+); otherwise the default recogniser with "prefer offline", and Settings says
-  so. "Read" speaks the day's summary; "Speak replies" says what was added. `voice.speak` is L1, user-only, and the
+  only (Android 12+ phones that have it); no cloud fallback, so on other phones the mic is shown disabled and
+  Settings says why. The VOICE switch hides the mic too. "Read" speaks the day's summary; "Speak replies" says what was added. `voice.speak` is L1, user-only, and the
   text is never audited.
 - Calendar (F7): "Show my calendar in plans" (off by default) asks for READ_CALENDAR and adds the day's timed,
   accepted, visible events as fixed events in `plan.generate`. Read-only. Events already typed in are not doubled.

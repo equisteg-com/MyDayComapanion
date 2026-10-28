@@ -127,7 +127,7 @@ class AppContainer(context: Context) : AppServices {
     private val calendar by lazy {
         ContentResolverCalendarProvider(appContext, { clock.zone }) { flags.isEnabled(Flag.CALENDAR_READ) && deviceSettings.calendarInPlans }
     }
-    private val launcher by lazy { AndroidDeviceActionLauncher(appContext) }
+    private val launcher by lazy { AndroidDeviceActionLauncher(appContext) { clock.zone } }
     private val speaker by lazy { AndroidSpeaker(appContext) }
     private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
     override val maintenance by lazy {
@@ -139,7 +139,7 @@ class AppContainer(context: Context) : AppServices {
     }
 
     override fun wipeLocalStorage(): Boolean =
-        runCatching { scheduler.cancelEverything() }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+        runCatching { scheduler.cancelEverything(); deviceSettings.calendarInPlans = false }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
 
     override val orchestrator: AgentOrchestrator by lazy {
         val ids = IdGenerator.RANDOM
@@ -148,7 +148,10 @@ class AppContainer(context: Context) : AppServices {
         val export = DataExportService(tasks, events, plans, routines, memories, audit, preferences, clock)
         val deletion = DataDeletionService(
             stores = listOf(tasks, events, plans, routines, memories, audit, preferences, security),
-            platformWipe = { scheduler.cancelAll() },
+            platformWipe = {
+                scheduler.cancelAll()
+                deviceSettings.calendarInPlans = false
+            },
         )
         AgentOrchestrator(
             router = AiInferenceRouter(providers = listOf(rules), fallback = rules),

@@ -75,7 +75,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Show my calendar in plans")
-                Text("Events from the phone's calendar are planned around. Read-only; nothing is changed or copied out.", style = MaterialTheme.typography.bodySmall)
+                Text("Events from the phone's calendar are planned around. Read-only: the calendar is never changed. Event times and titles are kept in your saved plans (encrypted) and in your own exports.", style = MaterialTheme.typography.bodySmall)
             }
             Switch(
                 checked = state.calendarInPlans,
@@ -104,7 +104,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
         Text(
             if (isOnDeviceRecognition(context)) "Voice input runs on this phone; your speech doesn't leave it."
-            else "This phone has no on-device speech recognition, so 🎤 uses the phone's default speech service, which may send audio to its provider (for example Google). You can always type instead.",
+            else "This phone has no on-device speech recognition, so voice input is off. Audio is never sent to an online service; you can type instead.",
             style = MaterialTheme.typography.bodySmall,
         )
 

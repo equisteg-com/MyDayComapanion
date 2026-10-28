@@ -195,8 +195,6 @@ fun TaskEditForm(
             }
         }
 
-        if (task.parentId == null) DeviceActionsSection(task, busy, onDeviceAction)
-
         error?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("edit-error")) }
         Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.End) {
             TextButton(onClick = onDelete, enabled = !busy, modifier = Modifier.testTag("edit-delete")) {
@@ -223,8 +221,13 @@ fun TaskEditForm(
                 modifier = Modifier.testTag("edit-save"),
             ) { Text("Save") }
         }
+
+        // Below Save so the form's own buttons stay where they were.
+        if (task.parentId == null) DeviceActionsSection(task, busy, onDeviceAction)
     }
 }
+
+private const val PERSONAL_LABEL = "Reminder"
 
 /**
  * Hand the task to another app (build doc F8). Each button asks for Confirm and then the
@@ -235,12 +238,16 @@ private fun DeviceActionsSection(task: Task, busy: Boolean, onAction: (String, J
     var contact by remember(task.id) { mutableStateOf("") }
     val time = task.preferredStart ?: task.deadline?.toLocalTime()
     val isEmail = contact.contains('@')
+    // The confirm text shows exactly what goes to the other app. A personal task's title never
+    // leaves the app: the alarm and calendar get a neutral label, and maps and messages are off.
+    val label = if (task.personal) PERSONAL_LABEL else task.title
+    val shown = "\"$label\""
     fun obj(vararg p: Pair<String, Any>) = JsonObject(p.associate { (k, v) -> k to if (v is Int) JsonPrimitive(v) else JsonPrimitive(v.toString()) })
 
     Text("Do it with another app", style = MaterialTheme.typography.titleSmall)
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         TextButton(
-            onClick = { onAction("device.setAlarm", SetAlarmTool.args(time!!, task.title), "Set an alarm for $time?") },
+            onClick = { onAction("device.setAlarm", SetAlarmTool.args(time!!, label), "Set an alarm for $time labelled $shown?") },
             enabled = !busy && time != null,
             modifier = Modifier.testTag("action-alarm"),
         ) { Text("Alarm") }
@@ -248,16 +255,16 @@ private fun DeviceActionsSection(task: Task, busy: Boolean, onAction: (String, J
             onClick = {
                 onAction(
                     "device.calendarInsert",
-                    obj("title" to task.title, "date" to task.date!!, "start" to time!!, "durationMinutes" to task.durationMinutes),
-                    "Add to your calendar?",
+                    obj("title" to label, "date" to task.date!!, "start" to time!!, "durationMinutes" to task.durationMinutes),
+                    "Add $shown to your calendar at $time?",
                 )
             },
             enabled = !busy && time != null && task.date != null,
             modifier = Modifier.testTag("action-calendar"),
         ) { Text("Calendar") }
         TextButton(
-            onClick = { onAction("device.navigate", obj("query" to task.title), "Get directions?") },
-            enabled = !busy,
+            onClick = { onAction("device.navigate", obj("query" to task.title), "Search maps for $shown?") },
+            enabled = !busy && !task.personal,
             modifier = Modifier.testTag("action-navigate"),
         ) { Text("Directions") }
     }
@@ -275,10 +282,10 @@ private fun DeviceActionsSection(task: Task, busy: Boolean, onAction: (String, J
                 onAction(
                     "device.composeMessage",
                     obj("channel" to if (isEmail) "EMAIL" else "SMS", "to" to contact.trim(), "body" to task.title),
-                    if (isEmail) "Write an e-mail?" else "Write a text message?",
+                    if (isEmail) "Draft an e-mail to ${contact.trim()} saying $shown?" else "Draft a text to ${contact.trim()} saying $shown?",
                 )
             },
-            enabled = !busy && contact.isNotBlank(),
+            enabled = !busy && contact.isNotBlank() && !task.personal,
             modifier = Modifier.testTag("action-message"),
         ) { Text(if (isEmail) "E-mail" else "Text") }
     }

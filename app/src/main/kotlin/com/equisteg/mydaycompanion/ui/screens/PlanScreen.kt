@@ -66,7 +66,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     enabled = !state.busy && state.input.isNotBlank(),
                     modifier = Modifier.testTag("submit"),
                 ) { Text("Plan it") }
-                VoiceInputButton(enabled = !state.busy, onText = viewModel::onVoiceText, onMessage = viewModel::onInfo)
+                if (viewModel.voiceEnabled) VoiceInputButton(enabled = !state.busy, onText = viewModel::onVoiceText, onMessage = viewModel::onInfo)
             }
             state.message?.let { Text(it, modifier = Modifier.padding(top = 8.dp).testTag("message")) }
         }

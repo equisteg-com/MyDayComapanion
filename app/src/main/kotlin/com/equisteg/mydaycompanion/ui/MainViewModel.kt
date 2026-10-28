@@ -107,6 +107,9 @@ class MainViewModel(
     private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
     val state: StateFlow<UiState> = _state.asStateFlow()
 
+    /** The VOICE kill switch covers the microphone as well as spoken replies. */
+    val voiceEnabled: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.VOICE)
+
     private val selectedDate = MutableStateFlow(_state.value.selectedDate)
 
     val plan: StateFlow<DayPlan?> = selectedDate
@@ -157,8 +160,16 @@ class MainViewModel(
 
     /** "Read my day": a short spoken summary of the shown day. Personal task titles are never read out. */
     fun onReadMyDay() = launchBusy {
-        val day = services.plans.get(_state.value.selectedDate)
-        val text = day?.let { DailyBrief.summary(it, services.tasks.all()) } ?: "Nothing planned yet."
+        val date = _state.value.selectedDate
+        val today = LocalDate.now(services.clock)
+        val label = when (date) {
+            today -> "today"
+            today.plusDays(1) -> "tomorrow"
+            today.minusDays(1) -> "yesterday"
+            else -> "on " + date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+        }
+        val day = services.plans.get(date)
+        val text = day?.let { DailyBrief.summary(it, services.tasks.all(), label) } ?: "Nothing planned yet."
         speak(text, quietly = false)
     }
 

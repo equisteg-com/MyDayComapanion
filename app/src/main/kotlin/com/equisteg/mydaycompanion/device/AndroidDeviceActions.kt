@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.CalendarContract
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import com.equisteg.mydaycompanion.domain.tools.DeviceAction
 import com.equisteg.mydaycompanion.domain.tools.DeviceActionLauncher
 import com.equisteg.mydaycompanion.domain.tools.Speaker
@@ -22,7 +23,7 @@ import java.util.Locale
  * call, message, alarm or event and the owner finishes it there. Messages and e-mails go through
  * the system chooser so a lookalike app can't silently take them; nothing is ever sent from here.
  */
-class AndroidDeviceActionLauncher(private val context: Context) : DeviceActionLauncher {
+class AndroidDeviceActionLauncher(private val context: Context, private val zone: () -> ZoneId) : DeviceActionLauncher {
     override suspend fun launch(action: DeviceAction): Boolean = withContext(Dispatchers.Main) {
         val intent = when (action) {
             is DeviceAction.SetAlarm -> Intent(AlarmClock.ACTION_SET_ALARM)
@@ -40,7 +41,7 @@ class AndroidDeviceActionLauncher(private val context: Context) : DeviceActionLa
             }
             is DeviceAction.Navigate -> Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(action.query)))
             is DeviceAction.CalendarInsert -> {
-                val begin = action.date.atTime(action.start).atZone(ZoneId.systemDefault())
+                val begin = action.date.atTime(action.start).atZone(zone())
                 Intent(Intent.ACTION_INSERT, CalendarContract.Events.CONTENT_URI)
                     .putExtra(CalendarContract.Events.TITLE, action.title)
                     .putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin.toInstant().toEpochMilli())
@@ -58,21 +59,33 @@ class AndroidDeviceActionLauncher(private val context: Context) : DeviceActionLa
     }
 }
 
-/** The phone's own text-to-speech engine; offline voices are used when the phone has them. */
+/**
+ * The phone's own text-to-speech engine; offline voices are used when the phone has them. The
+ * engine is started only when something is spoken and shut down when it finishes, so nothing is
+ * bound in the background for owners who never use voice.
+ */
 class AndroidSpeaker(context: Context) : Speaker {
-    private val ready = CompletableDeferred<Boolean>()
-    private val tts = TextToSpeech(context.applicationContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
+    private val appContext = context.applicationContext
 
-    override suspend fun speak(text: String): Boolean {
+    override suspend fun speak(text: String): Boolean = withContext(Dispatchers.Main) {
+        val ready = CompletableDeferred<Boolean>()
+        val tts = TextToSpeech(appContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
         val ok = withTimeoutOrNull(3_000) { ready.await() } ?: false
-        if (!ok) return false
-        return withContext(Dispatchers.Main) {
-            tts.language = Locale.getDefault()
-            tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mdc-speak") == TextToSpeech.SUCCESS
+        if (!ok) {
+            tts.shutdown()
+            return@withContext false
         }
-    }
-
-    fun stop() {
-        tts.stop()
+        tts.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+                override fun onDone(utteranceId: String?) = tts.shutdown()
+                @Deprecated("Deprecated in Java")
+                override fun onError(utteranceId: String?) = tts.shutdown()
+            },
+        )
+        tts.language = Locale.getDefault()
+        val queued = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mdc-speak") == TextToSpeech.SUCCESS
+        if (!queued) tts.shutdown()
+        queued
     }
 }

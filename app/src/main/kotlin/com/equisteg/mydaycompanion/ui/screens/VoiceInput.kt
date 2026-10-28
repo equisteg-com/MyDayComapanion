@@ -26,9 +26,9 @@ import androidx.core.content.ContextCompat
 
 /**
  * Press-to-talk (build doc F6). The microphone is used only between the tap and the end of the
- * sentence; there is no wake word and nothing listens in the background. On Android 12+ phones
- * that have it, the on-device recogniser is used, so speech never leaves the phone. Otherwise the
- * phone's default recogniser is asked to prefer offline; the Settings screen says so.
+ * sentence; there is no wake word and nothing listens in the background. Only the phone's
+ * on-device recogniser is used, so speech never leaves the phone; there is no cloud fallback
+ * (docs/prebuild/12-open-questions.md, "Voice"). Phones without one show the button disabled.
  * The words land in the input box; nothing happens until the owner taps "Plan it".
  */
 @Composable
@@ -68,7 +68,7 @@ fun VoiceInputButton(enabled: Boolean, onText: (String) -> Unit, onMessage: (Str
         r.startListening(
             Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true) // belt and braces; the recogniser is on-device already
                 .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1),
         )
         listening = true
@@ -88,15 +88,17 @@ fun VoiceInputButton(enabled: Boolean, onText: (String) -> Unit, onMessage: (Str
         },
         enabled = enabled && recognizer != null,
         modifier = modifier.testTag("voice"),
-    ) { Text(if (listening) "Listening… tap to stop" else "🎤 Speak") }
+    ) { Text(if (recognizer == null) "🎤 Needs on-device voice" else if (listening) "Listening… tap to stop" else "🎤 Speak") }
 }
 
 /** True when speech is recognised on the phone itself. */
 fun isOnDeviceRecognition(context: Context): Boolean =
     Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
 
-private fun createRecognizer(context: Context): SpeechRecognizer? = when {
-    isOnDeviceRecognition(context) -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-    SpeechRecognizer.isRecognitionAvailable(context) -> SpeechRecognizer.createSpeechRecognizer(context)
-    else -> null
-}
+/** On-device only, never the phone's default (possibly cloud) recogniser. */
+private fun createRecognizer(context: Context): SpeechRecognizer? =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && SpeechRecognizer.isOnDeviceRecognitionAvailable(context)) {
+        SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+    } else {
+        null
+    }

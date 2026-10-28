@@ -3,9 +3,13 @@ package com.equisteg.mydaycompanion
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import com.equisteg.mydaycompanion.domain.config.FeatureFlags
+import com.equisteg.mydaycompanion.domain.config.Flag
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
 import com.equisteg.mydaycompanion.domain.tools.DeviceAction
@@ -66,5 +70,37 @@ class DeviceActionsUiTest {
         compose.waitUntil(5_000) { graph.phone.spoken.isNotEmpty() }
         assertTrue(graph.phone.spoken.single().startsWith("1 task today."), graph.phone.spoken.single())
         assertTrue(compose.onAllNodes(hasTestTag("voice")).fetchSemanticsNodes().isNotEmpty(), "mic button shown")
+    }
+
+    @Test
+    fun `without an on-device recogniser the mic is off, never a cloud fallback`() {
+        compose.setContent { AppNavigation(viewModel) }
+        compose.onNodeWithTag("voice").performScrollTo().assertIsNotEnabled().assertTextContains("Needs on-device voice", substring = true)
+    }
+
+    @Test
+    fun `the voice switch hides the mic`() {
+        val off = MainViewModel(TestServices(graph, flags = FeatureFlags(mapOf(Flag.VOICE to false))), Dispatchers.Unconfined)
+        compose.setContent { AppNavigation(off) }
+        compose.waitForIdle()
+        assertTrue(compose.onAllNodes(hasTestTag("voice")).fetchSemanticsNodes().isEmpty(), "no mic when voice is switched off")
+    }
+
+    @Test
+    fun `a personal task's title never goes to another app`() {
+        val secret = task.copy(id = "t2", title = "Clinic results", personal = true)
+        compose.setContent {
+            TaskEditForm(secret, emptyList(), busy = false, onSave = {}, onDelete = {}, onAddSubtask = { _, _ -> }, onCancel = {}, onDeviceAction = viewModel::onDeviceAction)
+        }
+        compose.onNodeWithTag("action-contact").performScrollTo().performTextInput("9845012345")
+        compose.onNodeWithTag("action-message").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("action-navigate").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("action-alarm").performScrollTo().performClick()
+        compose.waitUntil(5_000) { viewModel.state.value.pending != null }
+        viewModel.onConfirmPending()
+        compose.waitUntil(5_000) { viewModel.state.value.authRequest?.purpose == AuthPurpose.APPROVE }
+        viewModel.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        compose.waitUntil(5_000) { graph.phone.launched.isNotEmpty() }
+        assertEquals(DeviceAction.SetAlarm(LocalTime.of(16, 0), "Reminder"), graph.phone.launched.single())
     }
 }
