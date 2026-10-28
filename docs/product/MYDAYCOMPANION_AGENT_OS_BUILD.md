@@ -502,7 +502,7 @@ No network, analytics or paid SDK.
 - Threat model additions: stolen unlocked phone, shoulder-surfed PIN, coerced owner, malicious backup file, intent hijacking (explicit package or chooser for device actions), notification content on the lock screen (reminder text hidden on the secure lock screen by default; setting to show).
 - Backup files are validated as untrusted input; size cap 20 MB; unknown fields rejected.
 - Device-action intents never include memory content; the owner sees the exact text before approval.
-- `FLAG_SECURE` on screens that show challenge questions, backup passphrase and memory.
+- `FLAG_SECURE` on screens that show challenge questions, backup passphrase and memory, and on every screen while the app lock is on (OQ-26), so the recent-apps preview can't show the day's tasks.
 - Audit adds `verification=BIOMETRIC|DEVICE_CREDENTIAL|CHALLENGE|TAP|STANDING` without content.
 - Permissions are requested in context (first reminder → notifications; first voice use → microphone; calendar toggle → calendar), each justified in `docs/prebuild/06-permission-model.md` and allowlisted in `ManifestSecurityTest`.
 - `INTERNET` stays absent. CI keeps failing if it appears, until a founder-approved decision (D-02/D-03c/D-04/D-06) changes the rule.

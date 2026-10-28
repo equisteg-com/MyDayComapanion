@@ -61,10 +61,17 @@ jobs:
           NEXT_PUBLIC_PLAY_URL: ${{ vars.PLAY_URL }}
           # release id in client error reports (watchdog groups errors by release)
           NEXT_PUBLIC_RELEASE: ${{ github.sha }}
-        run: |
-          npm run build --if-present
-          # production: full SEO rules; dev/staging (NEXT_PUBLIC_NOINDEX=1): every page must be noindex and robots must block
-          npm run seo:audit --workspaces --if-present
+        run: npm run build --if-present
+
+      - name: SEO audit of the static export
+        # production: full SEO rules; dev/staging (NEXT_PUBLIC_NOINDEX=1): every page must be noindex and robots must block.
+        # npm exits 1 ("No workspaces found") while apps/* and packages/* hold no package yet (native Android
+        # product, CLAUDE.md), so the audit runs only once a web package exists — the same guard as ci.yml.
+        if: hashFiles('apps/*/package.json', 'packages/*/package.json') != ''
+        env:
+          NEXT_PUBLIC_SITE_URL: ${{ steps.env.outputs.name == 'production' && vars.PRODUCTION_URL || (steps.env.outputs.name == 'staging' && vars.STAGING_URL || vars.DEV_URL) }}
+          NEXT_PUBLIC_NOINDEX: ${{ steps.env.outputs.name == 'production' && '0' || '1' }}
+        run: npm run seo:audit --workspaces --if-present
 
       - name: Skip if no Worker yet
         id: has_api

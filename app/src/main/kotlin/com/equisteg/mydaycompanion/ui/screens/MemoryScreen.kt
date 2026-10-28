@@ -1,9 +1,5 @@
 package com.equisteg.mydaycompanion.ui.screens
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.view.WindowManager
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -29,7 +25,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
@@ -38,25 +33,6 @@ import com.equisteg.mydaycompanion.domain.memory.MemoryItem
 import com.equisteg.mydaycompanion.domain.memory.MemorySensitivity
 import com.equisteg.mydaycompanion.domain.memory.MemorySource
 import com.equisteg.mydaycompanion.ui.MainViewModel
-
-/**
- * Blocks screenshots, screen recording and the recent-apps preview while this composable is on
- * screen (build doc §11: memory, challenge questions and the backup passphrase).
- */
-@Composable
-fun SecureWindow() {
-    val activity = LocalContext.current.findActivity() ?: return
-    DisposableEffect(activity) {
-        activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        onDispose { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
-    }
-}
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 /**
  * What the agent remembers about the owner (F9). Suggestions wait here until the owner keeps them
