@@ -21,7 +21,16 @@ import com.equisteg.mydaycompanion.domain.tools.DeleteTaskTool
 import com.equisteg.mydaycompanion.domain.tools.ExportDataTool
 import com.equisteg.mydaycompanion.domain.tools.ExportTargets
 import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
+import com.equisteg.mydaycompanion.domain.tools.CalendarInsertTool
+import com.equisteg.mydaycompanion.domain.tools.ComposeMessageTool
 import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
+import com.equisteg.mydaycompanion.domain.tools.DeviceAction
+import com.equisteg.mydaycompanion.domain.tools.DeviceActionLauncher
+import com.equisteg.mydaycompanion.domain.tools.DialTool
+import com.equisteg.mydaycompanion.domain.tools.NavigateTool
+import com.equisteg.mydaycompanion.domain.tools.SetAlarmTool
+import com.equisteg.mydaycompanion.domain.tools.SpeakTool
+import com.equisteg.mydaycompanion.domain.tools.Speaker
 import com.equisteg.mydaycompanion.domain.tools.DeleteRoutineTool
 import com.equisteg.mydaycompanion.domain.tools.MaterializeRoutinesTool
 import com.equisteg.mydaycompanion.domain.tools.ReopenTaskTool
@@ -60,6 +69,15 @@ class RecordingNotificationScheduler : NotificationScheduler {
     override suspend fun cancelAll() { registered = emptyList() }
 }
 
+/** Remembers what would have been handed to other apps or read aloud. */
+class RecordingDevice : DeviceActionLauncher, Speaker {
+    val launched = mutableListOf<DeviceAction>()
+    val spoken = mutableListOf<String>()
+    var appAvailable = true
+    override suspend fun launch(action: DeviceAction): Boolean = appAvailable.also { if (it) launched += action }
+    override suspend fun speak(text: String): Boolean { spoken += text; return true }
+}
+
 /** Fully wired in-memory object graph for tests. Defaults: 2026-10-06 07:00 UTC, battery 80%. */
 class TestGraph(
     val clock: Clock = Clock.fixed(Instant.parse("2026-10-06T07:00:00Z"), ZoneOffset.UTC),
@@ -79,6 +97,11 @@ class TestGraph(
     val ids = SequentialIds()
     val exportTargets = InMemoryExportTargets()
     val scheduler = RecordingNotificationScheduler()
+    val phone = RecordingDevice()
+    var calendarEvents: List<com.equisteg.mydaycompanion.domain.model.FixedEvent> = emptyList()
+    private val calendar = object : com.equisteg.mydaycompanion.domain.future.CalendarProvider {
+        override suspend fun eventsOn(date: java.time.LocalDate) = calendarEvents.filter { it.date == date }
+    }
     val planner = DeterministicPlanner()
     val rules = RuleBasedTaskExtractor()
     val permissions = PermissionChecker { it in grantedPermissions }
@@ -88,7 +111,7 @@ class TestGraph(
     val registry = ToolRegistry(
         listOf(
             CreateTasksTool(tasks, events, ids, clock),
-            GeneratePlanTool(tasks, events, plans, preferences, planner),
+            GeneratePlanTool(tasks, events, plans, preferences, planner, calendar),
             CompleteTaskTool(tasks, clock),
             ReopenTaskTool(tasks, clock),
             UpdateTaskTool(tasks, clock),
@@ -100,6 +123,12 @@ class TestGraph(
             UpdateRoutineTool(routines),
             DeleteRoutineTool(routines),
             MaterializeRoutinesTool(routines, tasks, clock),
+            SetAlarmTool(phone),
+            DialTool(phone),
+            ComposeMessageTool(phone),
+            NavigateTool(phone),
+            CalendarInsertTool(phone),
+            SpeakTool(phone),
             ExportDataTool(export, exportTargets),
             DeleteAllDataTool(deletion),
             UpdateSecuritySettingsTool(security),

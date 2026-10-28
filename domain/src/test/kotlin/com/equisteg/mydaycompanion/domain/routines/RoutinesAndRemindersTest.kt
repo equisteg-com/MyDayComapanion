@@ -268,6 +268,7 @@ class RoutinesAndRemindersTest {
     fun `brief text counts tasks and events and mentions what didn't fit`() {
         assertEquals("2 tasks and 1 event today. First up: Gym at 10:00. 1 task didn't fit.", DailyBrief.summary(plan, listOf(gym, secret)))
         assertEquals("Nothing planned yet.", DailyBrief.summary(plan.copy(blocks = emptyList()), emptyList()))
+        assertEquals("2 tasks and 1 event tomorrow. First up: Gym at 10:00. 1 task didn't fit.", DailyBrief.summary(plan, listOf(gym, secret), "tomorrow"))
         assertTrue(ReminderPlanner.plan(listOf(plan.copy(blocks = emptyList())), emptyList(), prefs, early, ZoneOffset.UTC).isEmpty())
     }
 

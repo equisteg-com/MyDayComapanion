@@ -2,6 +2,7 @@ package com.equisteg.mydaycompanion.domain.planner
 
 import com.equisteg.mydaycompanion.domain.model.BlockKind
 import com.equisteg.mydaycompanion.domain.model.DayPlan
+import com.equisteg.mydaycompanion.domain.model.EventSource
 import com.equisteg.mydaycompanion.domain.model.PlanBlock
 import com.equisteg.mydaycompanion.domain.model.PlanIssue
 import com.equisteg.mydaycompanion.domain.model.PlanIssueType
@@ -36,7 +37,11 @@ class DeterministicPlanner : PlannerEngine {
                 issues += PlanIssue(
                     PlanIssueType.FIXED_EVENT_CONFLICT,
                     events[i].id,
-                    "Two fixed events overlap; the user has to choose which to keep.",
+                    if (events[i].source == EventSource.CALENDAR || events[i - 1].source == EventSource.CALENDAR) {
+                        "Two events overlap; one comes from the phone's calendar, so change it there if needed."
+                    } else {
+                        "Two fixed events overlap; the user has to choose which to keep."
+                    },
                 )
             }
         }

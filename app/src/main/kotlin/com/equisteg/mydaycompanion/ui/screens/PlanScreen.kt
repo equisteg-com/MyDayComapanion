@@ -60,11 +60,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 placeholder = { Text("tmrw gym 6am, call Raj around 4ish, dentist fri 3-4pm, finish report by eod") },
                 minLines = 2,
             )
-            Button(
-                onClick = viewModel::onSubmit,
-                enabled = !state.busy && state.input.isNotBlank(),
-                modifier = Modifier.padding(top = 8.dp).testTag("submit"),
-            ) { Text("Plan it") }
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(
+                    onClick = viewModel::onSubmit,
+                    enabled = !state.busy && state.input.isNotBlank(),
+                    modifier = Modifier.testTag("submit"),
+                ) { Text("Plan it") }
+                if (viewModel.voiceEnabled) VoiceInputButton(enabled = !state.busy, onText = viewModel::onVoiceText, onMessage = viewModel::onInfo)
+            }
             state.message?.let { Text(it, modifier = Modifier.padding(top = 8.dp).testTag("message")) }
         }
 
@@ -95,6 +98,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 TextButton(onClick = { viewModel.selectDate(state.selectedDate.minusDays(1)) }) { Text("‹") }
                 TextButton(onClick = { viewModel.selectDate(state.selectedDate.plusDays(1)) }) { Text("›") }
                 TextButton(onClick = viewModel::onReplan, enabled = !state.busy) { Text("Replan") }
+                TextButton(onClick = viewModel::onReadMyDay, enabled = !state.busy, modifier = Modifier.testTag("read-day")) { Text("Read") }
             }
         }
 
@@ -129,6 +133,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             onDelete = { viewModel.onDeleteTask(task.id); editingId = null },
             onAddSubtask = { title, minutes -> viewModel.onAddSubtask(task.id, title, minutes) },
             onDismiss = { editingId = null },
+            onDeviceAction = { id, args, title -> viewModel.onDeviceAction(id, args, title); editingId = null },
         )
     }
 }

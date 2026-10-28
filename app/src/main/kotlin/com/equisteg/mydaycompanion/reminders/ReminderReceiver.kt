@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -17,15 +18,18 @@ import com.equisteg.mydaycompanion.MyDayCompanionApp
 import com.equisteg.mydaycompanion.R
 import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
+import com.equisteg.mydaycompanion.domain.model.BlockKind
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.reminders.ReminderKind
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import java.time.LocalDate
 
 /**
  * Not exported: only this app's own alarms and notification buttons, and the system's restart and
@@ -49,6 +53,11 @@ class ReminderReceiver : BroadcastReceiver() {
                     Intent.ACTION_TIMEZONE_CHANGED,
                     -> app.services.maintenance.run()
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Never crash the app from a background broadcast. Only the error type is logged, never task text.
+                Log.w(TAG, "Reminder work failed: ${e.javaClass.simpleName}")
             } finally {
                 pending.finish()
             }
@@ -56,6 +65,8 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 
     private suspend fun show(context: Context, app: MyDayCompanionApp, intent: Intent) {
+        // A snooze that fires is done: forget its id so the list of snoozes doesn't grow.
+        if (intent.data?.fragment == AlarmNotificationScheduler.SNOOZE_FRAGMENT) AlarmNotificationScheduler.forgetSnooze(context, intent.dataString.orEmpty())
         if (!canNotify(context)) return
         ensureChannels(context)
         val kind = intent.getStringExtra(EXTRA_KIND)?.let { k -> ReminderKind.entries.firstOrNull { it.name == k } } ?: return
@@ -64,6 +75,8 @@ class ReminderReceiver : BroadcastReceiver() {
         val taskId = intent.getStringExtra(EXTRA_TASK_ID)
         // A task finished, skipped or deleted (including by a wipe) since the alarm was set is not reminded.
         if (kind == ReminderKind.TASK && (taskId == null || app.services.tasks.get(taskId)?.status != TaskStatus.OPEN)) return
+        // An event removed from the plan since the alarm (or snooze) was set is not shown either.
+        if (kind == ReminderKind.EVENT && !eventStillPlanned(app, intent.data?.schemeSpecificPart)) return
         val id = intent.dataString.hashCode()
         val open = PendingIntent.getActivity(
             context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
@@ -101,6 +114,14 @@ class ReminderReceiver : BroadcastReceiver() {
         }
         @Suppress("MissingPermission") // checked in canNotify
         NotificationManagerCompat.from(context).notify(id, builder.build())
+    }
+
+    /** Reminder ids for events look like `event:<refId>:<date>`; the refId itself may contain colons. */
+    private suspend fun eventStillPlanned(app: MyDayCompanionApp, reminderId: String?): Boolean {
+        val rest = reminderId?.removePrefix("event:")?.takeIf { it != reminderId } ?: return false
+        val refId = rest.substringBeforeLast(':')
+        val date = runCatching { LocalDate.parse(rest.substringAfterLast(':')) }.getOrNull() ?: return false
+        return app.services.plans.get(date)?.blocks?.any { it.kind == BlockKind.FIXED_EVENT && it.refId == refId } == true
     }
 
     /** The owner tapped "In 10 min": the same reminder shows again later, registered so a wipe cancels it. */
@@ -153,6 +174,7 @@ class ReminderReceiver : BroadcastReceiver() {
         const val CHANNEL_BRIEF = "brief"
         const val PUBLIC_TITLE = "Reminder"
 
+        private const val TAG = "MdcReminders"
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
         fun canNotify(context: Context): Boolean =

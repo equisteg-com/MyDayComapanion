@@ -32,6 +32,9 @@ import androidx.compose.ui.window.Dialog
 import com.equisteg.mydaycompanion.domain.model.Priority
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
+import com.equisteg.mydaycompanion.domain.tools.SetAlarmTool
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -99,10 +102,11 @@ fun TaskEditDialog(
     onDelete: () -> Unit,
     onAddSubtask: (String, Int) -> Unit,
     onDismiss: () -> Unit,
+    onDeviceAction: (String, JsonObject, String) -> Unit = { _, _, _ -> },
 ) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(shape = MaterialTheme.shapes.extraLarge, tonalElevation = 6.dp) {
-            TaskEditForm(task, subtasks, busy, onSave, onDelete, onAddSubtask, onDismiss, Modifier.padding(20.dp))
+            TaskEditForm(task, subtasks, busy, onSave, onDelete, onAddSubtask, onDismiss, Modifier.padding(20.dp), onDeviceAction)
         }
     }
 }
@@ -118,6 +122,7 @@ fun TaskEditForm(
     onAddSubtask: (String, Int) -> Unit,
     onCancel: () -> Unit,
     modifier: Modifier = Modifier,
+    onDeviceAction: (String, JsonObject, String) -> Unit = { _, _, _ -> },
 ) {
     var title by remember(task.id) { mutableStateOf(task.title) }
     var notes by remember(task.id) { mutableStateOf(task.notes.orEmpty()) }
@@ -216,5 +221,72 @@ fun TaskEditForm(
                 modifier = Modifier.testTag("edit-save"),
             ) { Text("Save") }
         }
+
+        // Below Save so the form's own buttons stay where they were.
+        if (task.parentId == null) DeviceActionsSection(task, busy, onDeviceAction)
+    }
+}
+
+private const val PERSONAL_LABEL = "Reminder"
+
+/**
+ * Hand the task to another app (build doc F8). Each button asks for Confirm and then the
+ * fingerprint, face or screen lock; the other app opens filled in and the owner finishes there.
+ */
+@Composable
+private fun DeviceActionsSection(task: Task, busy: Boolean, onAction: (String, JsonObject, String) -> Unit) {
+    var contact by remember(task.id) { mutableStateOf("") }
+    val time = task.preferredStart ?: task.deadline?.toLocalTime()
+    val isEmail = contact.contains('@')
+    // The confirm text shows exactly what goes to the other app. A personal task's title never
+    // leaves the app: the alarm and calendar get a neutral label, and maps and messages are off.
+    val label = if (task.personal) PERSONAL_LABEL else task.title
+    val shown = "\"$label\""
+    fun obj(vararg p: Pair<String, Any>) = JsonObject(p.associate { (k, v) -> k to if (v is Int) JsonPrimitive(v) else JsonPrimitive(v.toString()) })
+
+    Text("Do it with another app", style = MaterialTheme.typography.titleSmall)
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(
+            onClick = { onAction("device.setAlarm", SetAlarmTool.args(time!!, label), "Set an alarm for $time labelled $shown?") },
+            enabled = !busy && time != null,
+            modifier = Modifier.testTag("action-alarm"),
+        ) { Text("Alarm") }
+        TextButton(
+            onClick = {
+                onAction(
+                    "device.calendarInsert",
+                    obj("title" to label, "date" to task.date!!, "start" to time!!, "durationMinutes" to task.durationMinutes),
+                    "Add $shown to your calendar at $time?",
+                )
+            },
+            enabled = !busy && time != null && task.date != null,
+            modifier = Modifier.testTag("action-calendar"),
+        ) { Text("Calendar") }
+        TextButton(
+            onClick = { onAction("device.navigate", obj("query" to task.title), "Search maps for $shown?") },
+            enabled = !busy && !task.personal,
+            modifier = Modifier.testTag("action-navigate"),
+        ) { Text("Directions") }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(contact, { contact = it.take(254) }, label = { Text("Phone or e-mail") }, singleLine = true, modifier = Modifier.weight(1f).testTag("action-contact"))
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        TextButton(
+            onClick = { onAction("device.dial", obj("number" to contact.trim()), "Call ${contact.trim()}?") },
+            enabled = !busy && contact.isNotBlank() && !isEmail,
+            modifier = Modifier.testTag("action-call"),
+        ) { Text("Call") }
+        TextButton(
+            onClick = {
+                onAction(
+                    "device.composeMessage",
+                    obj("channel" to if (isEmail) "EMAIL" else "SMS", "to" to contact.trim(), "body" to task.title),
+                    if (isEmail) "Draft an e-mail to ${contact.trim()} saying $shown?" else "Draft a text to ${contact.trim()} saying $shown?",
+                )
+            },
+            enabled = !busy && contact.isNotBlank() && !task.personal,
+            modifier = Modifier.testTag("action-message"),
+        ) { Text(if (isEmail) "E-mail" else "Text") }
     }
 }

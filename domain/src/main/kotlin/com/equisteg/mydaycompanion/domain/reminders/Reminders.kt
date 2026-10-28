@@ -103,7 +103,7 @@ object ReminderPlanner {
 
 /** A short spoken or written summary of a day. Personal task titles are never included. */
 object DailyBrief {
-    fun summary(plan: DayPlan, tasks: List<Task>): String {
+    fun summary(plan: DayPlan, tasks: List<Task>, day: String = "today"): String {
         val byId = tasks.associateBy { it.id }
         val taskBlocks = plan.blocks.filter { it.kind == BlockKind.TASK }
         val events = plan.blocks.count { it.kind == BlockKind.FIXED_EVENT }
@@ -115,7 +115,7 @@ object DailyBrief {
         val first = plan.blocks.minBy { it.start }
         val firstTitle = if (byId[first.refId]?.personal == true) "a personal task" else first.title
         val late = if (plan.unscheduledTaskIds.isNotEmpty()) " ${plural(plan.unscheduledTaskIds.size, "task")} didn't fit." else ""
-        return "${parts.joinToString(" and ")} today. First up: $firstTitle at ${first.start}.$late"
+        return "${parts.joinToString(" and ")} $day. First up: $firstTitle at ${first.start}.$late"
     }
 
     private fun plural(n: Int, word: String) = if (n == 1) "1 $word" else "$n ${word}s"

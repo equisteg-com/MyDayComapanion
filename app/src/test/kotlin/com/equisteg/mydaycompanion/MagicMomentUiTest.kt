@@ -32,18 +32,23 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-internal class TestServices(val graph: TestGraph, appLock: Boolean = false, onboarded: Boolean = true) : AppServices {
+internal class TestServices(
+    val graph: TestGraph,
+    appLock: Boolean = false,
+    onboarded: Boolean = true,
+    override val flags: com.equisteg.mydaycompanion.domain.config.FeatureFlags = com.equisteg.mydaycompanion.domain.config.FeatureFlags(),
+) : AppServices {
     override val clock = graph.clock
     override val orchestrator = graph.orchestrator
     override val tasks = graph.tasks
     override val plans = graph.plans
     override val audit = graph.audit
-    override val flags = com.equisteg.mydaycompanion.domain.config.FeatureFlags()
     override val exportTargets = ContentResolverExportTargets(ApplicationProvider.getApplicationContext<android.app.Application>().contentResolver)
     override val security = graph.security
     override val challenges = ChallengeVerifier(graph.security, graph.clock::instant)
     override val preferences = graph.preferences
     override val routines = graph.routines
+    override val deviceSettings = object : DeviceSettings { override var calendarInPlans = false }
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false
 

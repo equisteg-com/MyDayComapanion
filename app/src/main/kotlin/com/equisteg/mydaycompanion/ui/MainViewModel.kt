@@ -14,6 +14,7 @@ import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
+import com.equisteg.mydaycompanion.domain.reminders.DailyBrief
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
 import com.equisteg.mydaycompanion.domain.security.ApprovalRules
@@ -88,6 +89,7 @@ data class UiState(
     val preferences: UserPreferences = UserPreferences(),
     /** False until preferences are read, so first-run setup does not flash for returning owners. */
     val preferencesLoaded: Boolean = false,
+    val calendarInPlans: Boolean = false,
 ) {
     val showOnboarding: Boolean get() = preferencesLoaded && !preferences.onboardingDone
 }
@@ -104,6 +106,9 @@ class MainViewModel(
     // Starts locked so nothing shows before the security settings are read; unlocks at once when the app lock is off.
     private val _state = MutableStateFlow(UiState(selectedDate = LocalDate.now(services.clock), locked = true))
     val state: StateFlow<UiState> = _state.asStateFlow()
+
+    /** The VOICE kill switch covers the microphone as well as spoken replies. */
+    val voiceEnabled: Boolean get() = services.flags.isEnabled(com.equisteg.mydaycompanion.domain.config.Flag.VOICE)
 
     private val selectedDate = MutableStateFlow(_state.value.selectedDate)
 
@@ -130,6 +135,7 @@ class MainViewModel(
                     locked = settings.appLockEnabled,
                     preferences = prefs,
                     preferencesLoaded = true,
+                    calendarInPlans = services.deviceSettings.calendarInPlans,
                 )
             }
             // Today's routine tasks and reminders; also re-run each night by the maintenance alarm.
@@ -145,6 +151,46 @@ class MainViewModel(
             is AgentProposal.NotUnderstood -> _state.update { it.copy(message = p.reason) }
             AgentProposal.Empty -> Unit
         }
+    }
+
+    /** Words from press-to-talk go into the input box; nothing runs until the owner taps "Plan it". */
+    fun onVoiceText(text: String) = _state.update { it.copy(input = listOf(it.input.trim(), text.trim()).filter(String::isNotEmpty).joinToString(" "), message = null) }
+
+    fun onInfo(text: String) = _state.update { it.copy(message = text) }
+
+    /** "Read my day": a short spoken summary of the shown day. Personal task titles are never read out. */
+    fun onReadMyDay() = launchBusy {
+        val date = _state.value.selectedDate
+        val today = LocalDate.now(services.clock)
+        val label = when (date) {
+            today -> "today"
+            today.plusDays(1) -> "tomorrow"
+            today.minusDays(1) -> "yesterday"
+            else -> "on " + date.dayOfWeek.getDisplayName(java.time.format.TextStyle.FULL, java.util.Locale.getDefault())
+        }
+        val day = services.plans.get(date)
+        val text = day?.let { DailyBrief.summary(it, services.tasks.all(), label) } ?: "Nothing planned yet."
+        speak(text, quietly = false)
+    }
+
+    private suspend fun speak(text: String, quietly: Boolean) {
+        val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to text)), Requester.USER)
+        if (r !is ExecutionResult.Done && !quietly) _state.update { it.copy(message = "Reading aloud isn't available. Check the phone's text-to-speech settings.") }
+    }
+
+    /**
+     * A device action from the task screen (alarm, call, message draft, directions, calendar). All
+     * are L3: a Confirm tap and then the fingerprint, face or screen lock, every time.
+     */
+    fun onDeviceAction(toolId: String, actionArgs: JsonObject, title: String) = launchBusy {
+        request(ProposedAction(toolId, actionArgs), title, "Another app opens with this filled in. You finish it there; nothing is sent by MyDayCompanion.")
+    }
+
+    /** "Show my calendar in plans". Turning it on asks for calendar access first (the activity does that). */
+    fun onCalendarInPlans(enabled: Boolean) = launchBusy {
+        services.deviceSettings.calendarInPlans = enabled
+        _state.update { it.copy(calendarInPlans = enabled) }
+        replan()
     }
 
     /** The owner allowed notifications; register today's reminders now rather than at the next change. */
@@ -171,7 +217,9 @@ class MainViewModel(
         services.maintenance.run()
         selectDate(proposal.previewPlans.first().date)
         val days = proposal.previewPlans.size
-        _state.update { it.copy(proposal = null, input = "", message = routineProblem ?: if (days > 1) "Added to $days days." else "Added to your day.") }
+        val done = routineProblem ?: if (days > 1) "Added to $days days." else "Added to your day."
+        _state.update { it.copy(proposal = null, input = "", message = done) }
+        if (_state.value.preferences.speechOutputEnabled) speak(done, quietly = true)
     }
 
     /** Ticks a task done, or back to not done. */

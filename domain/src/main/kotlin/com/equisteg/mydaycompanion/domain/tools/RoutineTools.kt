@@ -178,7 +178,7 @@ class MaterializeRoutinesTool(
         featureFlag = Flag.ROUTINES.key,
         agentProposable = false,
         confirmation = Confirmation.NEVER,
-        verification = "Every due routine has exactly one task on that day.",
+        verification = "Every due routine is covered: by its own task that day, a task with the same title that day, or its task moved to another day.",
     )
 
     override fun validate(args: JsonObject): ArgsValidation =
