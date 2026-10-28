@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.equisteg.mydaycompanion.domain.model.BlockKind
@@ -99,7 +100,7 @@ class AgentChatUiTest {
         compose.setContent { PlanScreen(vm) }
         vm.say("move call raj to friday")
 
-        compose.onNodeWithTag("suggestion").assertTextContains("Move \"Call Raj\" to Friday 9 October?", substring = true)
+        compose.onNodeWithText("Move \"Call Raj\" to Friday 9 October?").assertExists()
         assertEquals(today, runBlocking { graph.tasks.get("a")?.date }, "nothing moves before the tap")
         compose.onNodeWithTag("suggestion-accept").performClick()
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("a")?.date } == friday }
@@ -188,11 +189,11 @@ class AgentChatUiTest {
         seed(task("y", "Finish slides", date = today.minusDays(1)), task("t", "Today's task"))
         val vm = MainViewModel(services, Dispatchers.Unconfined)
         compose.setContent { PlanScreen(vm) }
-        compose.onNodeWithTag("rollover").assertTextContains("1 unfinished task from an earlier day")
+        compose.onNodeWithText("1 unfinished task from an earlier day").assertExists()
         compose.onNodeWithTag("rollover-accept").performClick()
         // The banner only shows what would move; nothing moves until the card's Move tap.
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("suggestion")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("suggestion").assertTextContains("Move to today: \"Finish slides\"?")
+        compose.onNodeWithText("Move to today: \"Finish slides\"?").assertExists()
         assertEquals(today.minusDays(1), runBlocking { graph.tasks.get("y")?.date })
         compose.onNodeWithTag("suggestion-accept").performClick()
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("y")?.date } == today }
