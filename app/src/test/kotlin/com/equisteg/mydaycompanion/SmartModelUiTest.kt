@@ -24,12 +24,17 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 private class FakeModel(var status: LocalModelStatus) : LocalModelControl {
     var downloads = 0
-    override suspend fun status() = status
+    var statusCalls = 0
+    override suspend fun status(): LocalModelStatus {
+        statusCalls++
+        return status
+    }
     override fun download(): Flow<ModelDownload> = flow {
         downloads++
         emit(ModelDownload.Started)
@@ -87,5 +92,21 @@ class SmartModelUiTest {
         compose.waitForIdle()
         assertTrue(compose.onAllNodes(hasTestTag("delete-all")).fetchSemanticsNodes().isNotEmpty(), "Settings is shown")
         assertTrue(compose.onAllNodes(hasTestTag("smart-toggle")).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun `ML Kit isn't asked anything while the flag or the switch is off`() {
+        val model = FakeModel(LocalModelStatus.AVAILABLE)
+        viewModel(model, FeatureFlags(mapOf(Flag.LOCAL_LLM to false)))
+        val services = TestServices(TestGraph()).apply { localModel = model; deviceSettings.smartModel = false }
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        compose.setContent { SettingsScreen(vm) }
+        compose.waitForIdle()
+        assertEquals(0, model.statusCalls, "nothing called while off")
+        compose.onNodeWithTag("model-status").performScrollTo().assertTextContains("Switched off", substring = true)
+
+        compose.onNodeWithTag("smart-toggle").performScrollTo().performClick()
+        compose.waitUntil(5_000) { vm.state.value.modelStatus == LocalModelStatus.AVAILABLE }
+        assertEquals(1, model.statusCalls, "turning it on checks the phone once")
     }
 }

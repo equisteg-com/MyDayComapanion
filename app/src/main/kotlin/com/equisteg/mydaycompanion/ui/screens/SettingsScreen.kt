@@ -160,22 +160,26 @@ private fun SmartModelSection(state: UiState, onToggle: (Boolean) -> Unit, onDow
         Switch(
             checked = state.smartModel && state.modelStatus != LocalModelStatus.UNAVAILABLE,
             onCheckedChange = onToggle,
-            enabled = !state.busy && state.modelStatus != null && state.modelStatus != LocalModelStatus.UNAVAILABLE,
+            // Off can always be turned on (that is when the phone is checked); on needs a usable model.
+            enabled = !state.busy && (!state.smartModel || (state.modelStatus != null && state.modelStatus != LocalModelStatus.UNAVAILABLE)),
             modifier = Modifier.testTag("smart-toggle"),
         )
     }
     Text(
-        when (state.modelStatus) {
-            null -> "Checking this phone…"
-            LocalModelStatus.AVAILABLE -> if (state.smartModel) "Ready. Gemini Nano is understanding your tasks." else "Ready, but switched off. The built-in rules are used."
-            LocalModelStatus.DOWNLOADABLE -> "This phone can use Gemini Nano. Android's AICore service downloads it once (the app itself stays offline)."
-            LocalModelStatus.DOWNLOADING -> state.modelDownload ?: "Android is downloading Gemini Nano…"
-            LocalModelStatus.UNAVAILABLE -> "This phone doesn't support Gemini Nano. The built-in rules understand your tasks instead."
+        when {
+            !state.smartModel -> "Switched off. The built-in rules understand your tasks; Gemini Nano isn't used."
+            else -> when (state.modelStatus) {
+                null -> "Checking this phone…"
+                LocalModelStatus.AVAILABLE -> "Ready. Gemini Nano is understanding your tasks."
+                LocalModelStatus.DOWNLOADABLE -> "This phone can use Gemini Nano. Android's AICore service downloads it once (the app itself stays offline)."
+                LocalModelStatus.DOWNLOADING -> state.modelDownload ?: "Android is downloading Gemini Nano…"
+                LocalModelStatus.UNAVAILABLE -> "This phone doesn't support Gemini Nano. The built-in rules understand your tasks instead."
+            }
         },
         style = MaterialTheme.typography.bodySmall,
         modifier = Modifier.testTag("model-status"),
     )
-    if (state.modelStatus == LocalModelStatus.DOWNLOADABLE) {
+    if (state.smartModel && state.modelStatus == LocalModelStatus.DOWNLOADABLE) {
         state.modelDownload?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = onDownload, enabled = !state.busy, modifier = Modifier.testTag("model-download")) { Text("Download Gemini Nano") }
     }

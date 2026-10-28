@@ -7,7 +7,7 @@ and makes no network calls (the app has no INTERNET permission regardless).
 |---|---|---|---|
 | DL-01 | Inventory complete | PASS | Tables below match the version catalog. |
 | DL-02 | Licences acceptable | PASS (one founder-approved exception) | Apache-2.0, BSD-style, MIT; EPL-1.0/2.0 only in test scope. Exception: ML Kit GenAI Prompt API under the ML Kit Terms of Service (Google APIs Terms), accepted by the founder on 2026-10-28 for Gemini Nano (D-03). |
-| DL-03 | No paid / telemetry / network SDKs | PASS with note | No paid SDK. ML Kit brings Google's usage-logging library (`com.google.android.datatransport` transport-runtime and transport-backend-cct, plus firebase-encoders and play-services-basement/base/tasks), confirmed in the CI dependency tree on 2026-10-28. Its INTERNET and ACCESS_NETWORK_STATE requests are removed by the app manifest and the APK is checked in CI, so the app cannot send anything. Whether its upload scheduling fails quietly without ACCESS_NETWORK_STATE on Android 14+ is OQ-20. The model itself is run and downloaded by Android's AICore system service. |
+| DL-03 | No paid / telemetry / network SDKs | PASS with note | No paid SDK. ML Kit brings Google's usage-logging library (`com.google.android.datatransport` transport-runtime and transport-backend-cct, plus firebase-encoders and play-services-basement/base/tasks), confirmed in the CI dependency tree on 2026-10-28. Its INTERNET and ACCESS_NETWORK_STATE requests are removed by the app manifest and the APK is checked in CI, so the app cannot send anything. Whether its upload scheduling fails quietly without ACCESS_NETWORK_STATE on Android 14+ is OQ-20. Owners can switch Gemini Nano off in Settings (then ML Kit is not called at all); turning it off for everyone needs a release with `local_llm` off. The model itself is run and downloaded by Android's AICore system service. |
 | DL-04 | Transitive review | PASS (CI) | `dependency-scan` job writes `app/gradle.lockfile` for the release runtime classpath and runs OSV-Scanner. |
 
 ## Shipped in the app
@@ -26,6 +26,10 @@ and makes no network calls (the app has no INTERNET permission regardless).
 | androidx.room (runtime, ktx; compiler at build time) | 2.7.2 | Apache-2.0 | Local database |
 | androidx.sqlite | 2.5.2 | Apache-2.0 | SQLite support API |
 | net.zetetic:sqlcipher-android | 4.10.0 | BSD-style (Zetetic community licence) | Database encryption; adds native libs (~3–4 MB per ABI) |
+| com.google.mlkit:common, genai-common, genai-schema (transitive via genai-prompt) | 18.11.0 / 1.0.0-beta4 / 1.0.0-alpha1 | ML Kit Terms of Service (founder-approved D-03) | Parts of the Prompt API |
+| com.google.android.gms:play-services-basement / -base / -tasks (transitive via ML Kit) | 18.9.0 / 18.5.0 / 18.2.0 | Android Software Development Kit License (free; covered by the D-03 approval) | Google Play services client glue that ML Kit needs |
+| com.google.android.datatransport:transport-api / -runtime / -backend-cct (transitive via ML Kit) | 2.2.1 / 2.2.6 / 2.3.3 | Apache-2.0 | Google's usage-logging transport; cannot send anything without INTERNET (OQ-20) |
+| com.google.firebase:firebase-encoders / -encoders-json / -components / -annotations (transitive via ML Kit) | 16.1.0 / 17.1.0 / 16.1.0 / 16.0.0 | Apache-2.0 | Serialisation used by the logging transport |
 | com.google.mlkit:genai-prompt | 1.0.0-beta4 | ML Kit Terms of Service (proprietary, free; founder-approved 2026-10-28) | Gemini Nano on supported phones (D-03). beta5 needs Kotlin 2.3. Output is untrusted and schema-validated; the rule extractor is the fallback |
 
 ## Build / test only (not shipped)

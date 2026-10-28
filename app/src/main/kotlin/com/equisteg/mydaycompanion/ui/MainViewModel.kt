@@ -150,7 +150,8 @@ class MainViewModel(
                     smartModel = services.deviceSettings.smartModel,
                 )
             }
-            refreshModelStatus()
+            // ML Kit is not touched at all while the flag or the owner's switch is off.
+            if (smartModelAllowed && services.deviceSettings.smartModel) refreshModelStatus()
             // Today's routine tasks and reminders; also re-run each night by the maintenance alarm.
             if (prefs.onboardingDone) services.maintenance.run()
         }
@@ -199,10 +200,11 @@ class MainViewModel(
         request(ProposedAction(toolId, actionArgs), title, "Another app opens with this filled in. You finish it there; nothing is sent by MyDayCompanion.")
     }
 
-    /** "Show my calendar in plans". Turning it on asks for calendar access first (the activity does that). */
+    /** "Use Gemini Nano". Turning it on checks the phone's model; off, ML Kit isn't called at all. */
     fun onSmartModel(enabled: Boolean) {
         services.deviceSettings.smartModel = enabled
-        _state.update { it.copy(smartModel = enabled) }
+        _state.update { it.copy(smartModel = enabled, modelStatus = null, modelDownload = null) }
+        if (enabled && smartModelAllowed) viewModelScope.launch { refreshModelStatus() }
     }
 
     /** Asks the phone's AICore service to download Gemini Nano; this app itself never goes online. */
@@ -233,6 +235,7 @@ class MainViewModel(
         _state.update { it.copy(modelStatus = status) }
     }
 
+    /** "Show my calendar in plans". Turning it on asks for calendar access first (the activity does that). */
     fun onCalendarInPlans(enabled: Boolean) = launchBusy {
         services.deviceSettings.calendarInPlans = enabled
         _state.update { it.copy(calendarInPlans = enabled) }
