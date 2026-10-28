@@ -26,6 +26,9 @@
     <uses-permission android:name="android.permission.READ_CALENDAR" />
     <!-- Hand an alarm to the clock app (F8). Install-time; the clock app shows it. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+    <!-- Gemini Nano (D-03): lets ML Kit connect to Android's on-device AICore service. Added by the ML Kit
+         library anyway; declared here so it is visible and allow-listed. It gives no network access. -->
+    <uses-permission android:name="com.google.android.apps.aicore.service.BIND_SERVICE" />
 
     <!-- Package visibility (Android 11+): the speech recogniser and text-to-speech engine this app talks to. -->
     <queries>
