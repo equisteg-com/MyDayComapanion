@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-10-28 — Test builds install over each other (CHG-002)
+
+- The founder's phone refused the latest debug APK. Each CI run made a new debug signing key, and Android won't
+  update an app signed with a different key. The Android workflow now keeps one debug key in the Actions cache.
+- Residual (accepted, S4): GitHub drops a cache entry after 7 days without a build, and caches made on a PR branch
+  are not shared with `development`; either way the next build gets a new key and the phone needs one uninstall.
+  Release signing is not affected.
+
 ## 2026-10-28 — Agent OS part 9: hide the app from recent apps while it is locked
 
 - OQ-26: while the app lock is on, every screen is `FLAG_SECURE`: blank in the recent-apps preview, no screenshots
