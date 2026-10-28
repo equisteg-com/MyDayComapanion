@@ -3,11 +3,15 @@ package com.equisteg.mydaycompanion
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.DisposableEffect
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
@@ -19,7 +23,9 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
+import androidx.compose.runtime.getValue
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.equisteg.mydaycompanion.navigation.AppNavigation
@@ -27,6 +33,7 @@ import com.equisteg.mydaycompanion.ui.AuthOutcome
 import com.equisteg.mydaycompanion.ui.AuthRequest
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import com.equisteg.mydaycompanion.ui.theme.MyDayCompanionTheme
+import com.equisteg.mydaycompanion.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -75,8 +82,25 @@ class MainActivity : FragmentActivity() {
             }
         }
 
+        // Only the look is collected for the theme, so typing doesn't rebuild it.
+        val lookFlow = viewModel.state.map { it.themeMode to it.dynamicColor }.distinctUntilChanged()
+        val firstLook = viewModel.state.value.let { it.themeMode to it.dynamicColor }
         setContent {
-            MyDayCompanionTheme {
+            val look by lookFlow.collectAsStateWithLifecycle(firstLook)
+            val dark = when (look.first) {
+                ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+            // Status and navigation bar icons follow the app's theme, not only the phone's.
+            DisposableEffect(dark) {
+                enableEdgeToEdge(
+                    statusBarStyle = SystemBarStyle.auto(Color.TRANSPARENT, Color.TRANSPARENT) { dark },
+                    navigationBarStyle = SystemBarStyle.auto(LIGHT_SCRIM, DARK_SCRIM) { dark },
+                )
+                onDispose {}
+            }
+            MyDayCompanionTheme(look.first, look.second) {
                 AppNavigation(viewModel)
             }
         }
@@ -125,6 +149,12 @@ class MainActivity : FragmentActivity() {
         if (prefs.getBoolean("notifications", false)) return
         prefs.edit { putBoolean("notifications", true) }
         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+    }
+
+    private companion object {
+        // The scrims androidx.activity uses by default for 3-button navigation.
+        val LIGHT_SCRIM = Color.argb(0xE6, 0xFF, 0xFF, 0xFF)
+        val DARK_SCRIM = Color.argb(0x80, 0x1B, 0x1B, 0x1B)
     }
 
     /** After a wipe the database and its key are gone; start a fresh process so nothing old stays in memory. */

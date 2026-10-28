@@ -1,5 +1,7 @@
 package com.equisteg.mydaycompanion.navigation
 
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
@@ -95,12 +97,15 @@ fun AppNavigation(viewModel: MainViewModel) {
         },
     ) { padding ->
         val modifier = Modifier.padding(padding)
-        when (current) {
-            Destination.PLAN -> PlanScreen(viewModel, modifier)
-            Destination.ROUTINES -> RoutinesScreen(viewModel, modifier)
-            Destination.MEMORY -> MemoryScreen(viewModel, modifier)
-            Destination.HISTORY -> HistoryScreen(state, viewModel::onHistoryFilter, viewModel::onHistoryKeepDays, modifier)
-            Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
+        // A short cross-fade between tabs (UPD-010).
+        Crossfade(targetState = current, animationSpec = tween(220), label = "tab") { tab ->
+            when (tab) {
+                Destination.PLAN -> PlanScreen(viewModel, modifier)
+                Destination.ROUTINES -> RoutinesScreen(viewModel, modifier)
+                Destination.MEMORY -> MemoryScreen(viewModel, modifier)
+                Destination.HISTORY -> HistoryScreen(state, viewModel::onHistoryFilter, viewModel::onHistoryKeepDays, modifier)
+                Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
+            }
         }
     }
 

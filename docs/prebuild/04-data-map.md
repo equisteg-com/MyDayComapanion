@@ -29,7 +29,7 @@
 | audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days by default; owner chooses 30 / 90 / 180 / 365 on History; removed nightly (`history.prune`) | Yes | Yes |
 | preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
 | Backup file (`.mdcbackup`, outside the app) | everything in the rows above, plus security settings and challenge-question hashes; not the database key | Personal / Sensitive | Owner (Settings → Back up) | Where the owner saved it (Storage Access Framework); the app keeps no copy | — | Owner deletes the file |
-| device_settings (SharedPreferences) | calendar, Gemini Nano, lock-screen and widget-name switches, History retention, wrong-backup-passphrase count and lock time | Low | User / app | Life of install; the restore lock survives "Delete everything" | No | Uninstall |
+| device_settings (SharedPreferences) | calendar, Gemini Nano, lock-screen and widget-name switches, theme and wallpaper-colour choice, History retention, wrong-backup-passphrase count and lock time | Low | User / app | Life of install; the restore lock survives "Delete everything" | No | Uninstall |
 | db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |
 | Keystore key | AES-256 wrapping key | Secret | AndroidKeyStore | Life of install | Never extractable | Removed on uninstall |
 

@@ -55,6 +55,8 @@ internal class TestServices(
         override var historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         override var lockScreenText = false
         override var widgetTitles = false
+        override var themeMode = "SYSTEM"
+        override var dynamicColor = false
         override var restoreFailures = 0
         override var restoreLockedUntilMillis = 0L
     }
