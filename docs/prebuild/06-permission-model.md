@@ -56,6 +56,8 @@ graceful behaviour when denied.
 | `memory.purgeExpired` | L1 | **no** | never (nightly, SYSTEM) | — | — | no stored memory is past its retention |
 | `history.prune` | L1 | **no** | never (nightly, SYSTEM, or the owner's retention choice) | — | — | no entry older than the cut-off; only 30/90/180/365 days accepted, so the last 30 days always stay |
 | `data.export` | L3 | **no** | always | — (SAF) | — | bytes written = export size |
+| `backup.create` | L3 | **no** | always (tap + device credential) | — (SAF) | — | the encrypted file opens with the passphrase before it is written; bytes written = file size; the passphrase is staged in memory and only a random token is in the arguments, the fingerprint and History |
+| `backup.restore` | L4 | **no** | always (tap + device credential + a challenge answer when set up) | — (SAF) | — | every store holds exactly what the backup holds; the approval is bound to the backup's SHA-256; the file was decrypted (AES-256-GCM) and every item validated before the owner was asked |
 | `data.deleteAll` | L4 | **no** | always | — | — | every store counts 0; then the app deletes the database files and destroys the key |
 | `security.updateSettings` | L4 | **no** | always | — | — | stored settings equal requested |
 | `security.setChallenges` | L4 | **no** | always | — | — | stored hashes equal requested |

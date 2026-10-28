@@ -84,6 +84,12 @@ interface AppServices {
     /** What the agent remembers about the owner (F9); read by the Memory screen. Changes go through the orchestrator. */
     val memories: com.equisteg.mydaycompanion.domain.memory.MemoryStore
 
+    /** Passphrases and decrypted backups waiting for the owner's approval; only tokens reach the tools. */
+    val backupStaging: com.equisteg.mydaycompanion.domain.tools.BackupStaging
+
+    /** Reads a backup file the owner picked; null when it can't be read or is over the size limit. */
+    suspend fun readBackupFile(uri: android.net.Uri): ByteArray?
+
     /** Owner switches kept on the phone only: "show my calendar in plans", "use Gemini Nano". */
     val deviceSettings: DeviceSettings
 
@@ -110,6 +116,13 @@ interface DeviceSettings {
     /** Show what a reminder is for on the secure lock screen. Off by default (build doc §11). */
     var lockScreenText: Boolean
 
+    /**
+     * Wrong backup passphrases in a row, and until when Restore stays closed after ten of them
+     * (build doc §7.3). Not part of [reset]: wiping the phone doesn't reopen guessing.
+     */
+    var restoreFailures: Int
+    var restoreLockedUntilMillis: Long
+
     /** Back to the defaults; part of "Delete everything" and the panic wipe. */
     fun reset() {
         calendarInPlans = false
@@ -135,6 +148,12 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var lockScreenText: Boolean
         get() = prefs.getBoolean("lock_screen_text", false)
         set(value) = prefs.edit().putBoolean("lock_screen_text", value).apply()
+    override var restoreFailures: Int
+        get() = prefs.getInt("restore_failures", 0)
+        set(value) { prefs.edit().putInt("restore_failures", value).commit() }
+    override var restoreLockedUntilMillis: Long
+        get() = prefs.getLong("restore_locked_until", 0L)
+        set(value) { prefs.edit().putLong("restore_locked_until", value).commit() }
 }
 
 /**
@@ -161,6 +180,9 @@ class AppContainer(context: Context) : AppServices {
     override val challenges by lazy { ChallengeVerifier(security, clock::instant) }
     private val scheduler by lazy { AlarmNotificationScheduler(appContext, clock) }
     override val deviceSettings by lazy { SharedPrefsDeviceSettings(appContext) }
+    override val backupStaging by lazy { com.equisteg.mydaycompanion.domain.tools.BackupStaging(clock) }
+
+    override suspend fun readBackupFile(uri: android.net.Uri): ByteArray? = readLimited(appContext.contentResolver, uri)
     private val calendar by lazy {
         ContentResolverCalendarProvider(appContext, { clock.zone }) { flags.isEnabled(Flag.CALENDAR_READ) && deviceSettings.calendarInPlans }
     }
@@ -235,6 +257,8 @@ class AppContainer(context: Context) : AppServices {
                     com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
                     com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
                     com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
+                    com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(com.equisteg.mydaycompanion.domain.backup.BackupService(export, security), exportTargets, backupStaging),
+                    com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(backupStaging, tasks, events, plans, routines, memories, audit, preferences, security),
                 ),
             ),
             policy = ToolAuthorizationPolicy(flags, permissionChecker),
@@ -249,3 +273,22 @@ class AppContainer(context: Context) : AppServices {
         )
     }
 }
+
+/** Reads at most [com.equisteg.mydaycompanion.domain.backup.BackupCodec.MAX_FILE_BYTES] + 1 bytes, so an oversized file is refused without loading it all. */
+internal suspend fun readLimited(resolver: android.content.ContentResolver, uri: android.net.Uri): ByteArray? =
+    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching {
+            resolver.openInputStream(uri)?.use { input ->
+                val limit = com.equisteg.mydaycompanion.domain.backup.BackupCodec.MAX_FILE_BYTES
+                val out = java.io.ByteArrayOutputStream()
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(buf, 0, n)
+                    if (out.size() > limit) break
+                }
+                out.toByteArray()
+            }
+        }.getOrNull()
+    }

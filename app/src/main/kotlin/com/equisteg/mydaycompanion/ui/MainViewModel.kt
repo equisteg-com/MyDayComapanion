@@ -14,6 +14,12 @@ import com.equisteg.mydaycompanion.domain.agent.ProposedAction
 import com.equisteg.mydaycompanion.domain.audit.AuditEntry
 import com.equisteg.mydaycompanion.domain.audit.HistoryFilter
 import com.equisteg.mydaycompanion.domain.audit.HistoryRetention
+import com.equisteg.mydaycompanion.domain.backup.BackupCodec
+import com.equisteg.mydaycompanion.domain.backup.BackupRead
+import com.equisteg.mydaycompanion.domain.backup.BackupReader
+import com.equisteg.mydaycompanion.domain.backup.Decrypted
+import com.equisteg.mydaycompanion.domain.tools.CreateBackupTool
+import com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool
 import com.equisteg.mydaycompanion.domain.memory.MemoryItem
 import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
 import com.equisteg.mydaycompanion.domain.tools.AddMemoryTool
@@ -80,6 +86,11 @@ enum class AuthOutcome { SUCCEEDED, CANCELLED, UNAVAILABLE }
 
 data class ChallengePrompt(val questionId: String, val question: String, val error: String? = null)
 
+/** The passphrase dialog for a new backup, or for opening one the owner picked (build doc §7.2, §7.3). */
+data class BackupPrompt(val kind: Kind, val error: String? = null) {
+    enum class Kind { CREATE, RESTORE }
+}
+
 data class UiState(
     val input: String = "",
     val busy: Boolean = false,
@@ -111,6 +122,7 @@ data class UiState(
     val historyKeepDays: Int = HistoryRetention.DEFAULT_DAYS,
     /** "Show reminder text on the lock screen" (off by default). */
     val lockScreenText: Boolean = false,
+    val backupPrompt: BackupPrompt? = null,
 ) {
     val proposedMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.PROPOSED }
     val keptMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.ACTIVE }
@@ -154,6 +166,10 @@ class MainViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private var backgroundedAt: Instant? = null
+
+    /** Where the next backup goes (an export-target token), and the backup file picked for restore. Kept out of [state]. */
+    private var backupTarget: String? = null
+    private var backupFile: ByteArray? = null
 
     init {
         viewModelScope.launch {
@@ -473,6 +489,160 @@ class MainViewModel(
         )
     }
 
+    /** The name offered in the system "save as" screen: mydaycompanion-YYYYMMDD.mdcbackup. */
+    fun backupFileName(): String =
+        "mydaycompanion-${LocalDate.now(services.clock).format(java.time.format.DateTimeFormatter.BASIC_ISO_DATE)}.${BackupCodec.FILE_EXTENSION}"
+
+    /** The owner picked where the backup goes; next they choose its passphrase. */
+    fun onBackupDestinationChosen(uri: Uri) {
+        backupTarget = services.exportTargets.register(uri)
+        _state.update { it.copy(backupPrompt = BackupPrompt(BackupPrompt.Kind.CREATE)) }
+    }
+
+    /**
+     * The passphrase is staged and only a random token goes into the action, so it never reaches
+     * the approval fingerprint or History. Both arrays are cleared here.
+     */
+    fun onBackupPassphrase(passphrase: CharArray, repeat: CharArray) = launchBusy {
+        try {
+            val error = when {
+                passphrase.size < BackupCodec.MIN_PASSPHRASE_CHARS -> "Use at least ${BackupCodec.MIN_PASSPHRASE_CHARS} characters."
+                !passphrase.contentEquals(repeat) -> "The two passphrases don't match."
+                else -> null
+            }
+            if (error != null) {
+                _state.update { it.copy(backupPrompt = BackupPrompt(BackupPrompt.Kind.CREATE, error)) }
+                return@launchBusy
+            }
+            val target = backupTarget
+            backupTarget = null
+            _state.update { it.copy(backupPrompt = null) }
+            if (target == null) return@launchBusy
+            val key = services.backupStaging.stagePassphrase(passphrase)
+            request(
+                ProposedAction("backup.create", CreateBackupTool.args(target, key)),
+                "Back up your data?",
+                "Everything is encrypted with your passphrase and saved to the file you chose. " +
+                    "Without the passphrase nobody can open it, and it can't be recovered.",
+            )
+        } finally {
+            passphrase.fill(' ')
+            repeat.fill(' ')
+        }
+    }
+
+    /** The owner picked a backup file (Settings, or first-run setup on a new phone). */
+    fun onRestoreFileChosen(uri: Uri) = launchBusy {
+        restoreLockedMessage()?.let { msg ->
+            _state.update { it.copy(message = msg) }
+            return@launchBusy
+        }
+        val bytes = services.readBackupFile(uri)
+        when {
+            bytes == null -> _state.update { it.copy(message = "That file couldn't be read.") }
+            bytes.size > BackupCodec.MAX_FILE_BYTES -> _state.update { it.copy(message = "That file is too big to be a MyDayCompanion backup.") }
+            else -> {
+                backupFile = bytes
+                _state.update { it.copy(backupPrompt = BackupPrompt(BackupPrompt.Kind.RESTORE)) }
+            }
+        }
+    }
+
+    /**
+     * Opens the picked backup with [passphrase], checks every item in it, and asks the owner to
+     * approve replacing everything (L4). Ten wrong passphrases close Restore for an hour.
+     */
+    fun onRestorePassphrase(passphrase: CharArray) = launchBusy {
+        try {
+            restoreLockedMessage()?.let { msg ->
+                backupFile = null
+                _state.update { it.copy(backupPrompt = null, message = msg) }
+                return@launchBusy
+            }
+            val file = backupFile ?: return@launchBusy
+            when (val opened = withContext(background) { BackupCodec().decrypt(file, passphrase) }) {
+                Decrypted.WrongPassphraseOrTampered -> onWrongBackupPassphrase()
+                is Decrypted.Unreadable -> {
+                    backupFile = null
+                    val msg = if (opened.reason == "UNSUPPORTED_VERSION") {
+                        "This backup was made by a newer version of MyDayCompanion. Update the app, then try again."
+                    } else {
+                        "This isn't a MyDayCompanion backup, or it is damaged. Nothing was changed."
+                    }
+                    _state.update { it.copy(backupPrompt = null, message = msg) }
+                }
+                is Decrypted.Ok -> {
+                    services.deviceSettings.restoreFailures = 0
+                    backupFile = null
+                    val read = withContext(background) { BackupReader.read(opened.plaintext).also { opened.plaintext.fill(0) } }
+                    _state.update { it.copy(backupPrompt = null) }
+                    when (read) {
+                        is BackupRead.Invalid -> _state.update {
+                            it.copy(message = "This backup holds something MyDayCompanion wouldn't have written, so nothing was restored.")
+                        }
+                        is BackupRead.Valid -> {
+                            val c = read.contents
+                            val day = c.createdAt.atZone(services.clock.zone).toLocalDate()
+                            request(
+                                ProposedAction("backup.restore", RestoreBackupTool.args(services.backupStaging.stageRestore(c), c.digest)),
+                                "Replace everything with this backup?",
+                                "Backup from $day: ${c.tasks.size} tasks, ${c.routines.size} routines, ${c.memories.size} memories. " +
+                                    "Everything now on this phone is replaced. This cannot be undone.",
+                            )
+                        }
+                    }
+                }
+            }
+        } finally {
+            passphrase.fill(' ')
+        }
+    }
+
+    fun onCancelBackupPrompt() {
+        backupTarget = null
+        backupFile = null
+        _state.update { it.copy(backupPrompt = null) }
+    }
+
+    private fun onWrongBackupPassphrase() {
+        val settings = services.deviceSettings
+        val failures = settings.restoreFailures + 1
+        if (failures >= MAX_RESTORE_FAILURES) {
+            settings.restoreFailures = 0
+            settings.restoreLockedUntilMillis = services.clock.millis() + RESTORE_LOCK.toMillis()
+            backupFile = null
+            _state.update { it.copy(backupPrompt = null, message = restoreLockedMessage()) }
+        } else {
+            settings.restoreFailures = failures
+            val left = MAX_RESTORE_FAILURES - failures
+            _state.update {
+                it.copy(backupPrompt = BackupPrompt(BackupPrompt.Kind.RESTORE, "That passphrase doesn't open this backup, or the file was changed. $left tries left."))
+            }
+        }
+    }
+
+    private fun restoreLockedMessage(): String? {
+        val until = services.deviceSettings.restoreLockedUntilMillis
+        if (until <= services.clock.millis()) return null
+        val at = Instant.ofEpochMilli(until).atZone(services.clock.zone).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
+        return "Too many wrong passphrases. Restore opens again at $at."
+    }
+
+    /** Forgets a staged passphrase or backup when its approval is abandoned. */
+    private fun discardStaged(pending: PendingConfirmation?) {
+        if (pending == null || !pending.action.toolId.startsWith("backup.")) return
+        listOf("key", "staged").forEach { k -> (pending.action.args[k] as? JsonPrimitive)?.content?.let(services.backupStaging::discard) }
+    }
+
+    /** A restore replaced every store: read everything again and re-register reminders and routines. */
+    private suspend fun afterRestore() {
+        reloadSecurity()
+        _state.update { it.copy(preferences = services.preferences.get()) }
+        loadMemories()
+        services.maintenance.run()
+        replan()
+    }
+
     fun onDeleteEverything() = launchBusy {
         request(
             ProposedAction("data.deleteAll", args("scope" to "everything")),
@@ -487,7 +657,10 @@ class MainViewModel(
         advance(pending.copy(steps = pending.steps - ApprovalStep.TAP))
     }
 
-    fun onCancelPending() = _state.update { it.copy(pending = null, authRequest = null, challenge = null) }
+    fun onCancelPending() {
+        discardStaged(_state.value.pending)
+        _state.update { it.copy(pending = null, authRequest = null, challenge = null) }
+    }
 
     /** Result of the system prompt the activity showed for [UiState.authRequest]. */
     fun onDeviceAuthResult(outcome: AuthOutcome) = launchBusy {
@@ -511,7 +684,10 @@ class MainViewModel(
                         services.challenges.onDeviceCredentialPassed()
                         advance(pending.copy(steps = pending.steps - ApprovalStep.DEVICE_CREDENTIAL))
                     }
-                    AuthOutcome.CANCELLED -> _state.update { it.copy(pending = null, message = "Cancelled.") }
+                    AuthOutcome.CANCELLED -> {
+                        discardStaged(pending)
+                        _state.update { it.copy(pending = null, message = "Cancelled.") }
+                    }
                     AuthOutcome.UNAVAILABLE ->
                         if (_state.value.hasChallenges) {
                             val rest = pending.steps - ApprovalStep.DEVICE_CREDENTIAL
@@ -540,7 +716,10 @@ class MainViewModel(
         }
     }
 
-    fun onCancelChallenge() = _state.update { it.copy(challenge = null, pending = null) }
+    fun onCancelChallenge() {
+        discardStaged(_state.value.pending)
+        _state.update { it.copy(challenge = null, pending = null) }
+    }
 
     fun onUnlockRequested() = _state.update {
         it.copy(authRequest = AuthRequest(AuthPurpose.UNLOCK, "Unlock MyDayCompanion", "Use your fingerprint, face or screen lock"))
@@ -570,6 +749,8 @@ class MainViewModel(
         backgroundedAt = null
         val settings = _state.value.security
         if (settings.appLockEnabled && Duration.between(since, services.clock.instant()) >= Duration.ofMinutes(settings.lockAfterMinutes.toLong())) {
+            discardStaged(_state.value.pending)
+            onCancelBackupPrompt()
             _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null) }
         }
     }
@@ -644,7 +825,13 @@ class MainViewModel(
             }
             null -> {
                 _state.update { it.copy(pending = null, challenge = null) }
-                val r = services.orchestrator.execute(pending.action, Requester.USER, UserConfirmation(pending.fingerprint))
+                val confirmation = UserConfirmation(pending.fingerprint)
+                // Key derivation and encryption take a second or two: keep them off the main thread.
+                val r = if (pending.action.toolId.startsWith("backup.")) {
+                    withContext(background) { services.orchestrator.execute(pending.action, Requester.USER, confirmation) }
+                } else {
+                    services.orchestrator.execute(pending.action, Requester.USER, confirmation)
+                }
                 if (r is ExecutionResult.Done && pending.action.toolId == "data.deleteAll") {
                     wipeEverything()
                     return
@@ -653,10 +840,18 @@ class MainViewModel(
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 if (pending.action.toolId.startsWith("memory.")) loadMemories()
+                if (r is ExecutionResult.Done && pending.action.toolId == "backup.restore") afterRestore()
                 if (r is ExecutionResult.Done && pending.action.toolId == "history.prune") {
                     (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let(::applyHistoryKeepDays)
                 }
-                _state.update { it.copy(message = if (r is ExecutionResult.Done && pending.action.toolId == "memory.activate") "Kept. The agent will use it." else describe(r)) }
+                val done = r is ExecutionResult.Done
+                val message = when {
+                    done && pending.action.toolId == "memory.activate" -> "Kept. The agent will use it."
+                    done && pending.action.toolId == "backup.create" -> "Backup saved. Keep the file and your passphrase somewhere safe."
+                    done && pending.action.toolId == "backup.restore" -> "Restored. Your tasks, routines, memories and settings are back."
+                    else -> describe(r)
+                }
+                _state.update { it.copy(message = message) }
                 refreshHistory()
             }
         }
@@ -765,6 +960,10 @@ class MainViewModel(
     companion object {
         /** Newest entries loaded for History; the filters apply to these. */
         const val HISTORY_SHOWN = 300
+
+        /** Wrong backup passphrases in a row before Restore closes for [RESTORE_LOCK] (build doc §7.3). */
+        const val MAX_RESTORE_FAILURES = 10
+        val RESTORE_LOCK: Duration = Duration.ofHours(1)
 
         fun factory(services: AppServices) = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")

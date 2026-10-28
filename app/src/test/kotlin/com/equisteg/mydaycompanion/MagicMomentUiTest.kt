@@ -54,7 +54,15 @@ internal class TestServices(
         override var smartModel = true
         override var historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         override var lockScreenText = false
+        override var restoreFailures = 0
+        override var restoreLockedUntilMillis = 0L
     }
+    override val backupStaging = graph.staging
+
+    /** What the "picked" backup file holds in tests; null means it couldn't be read. */
+    var backupFile: ByteArray? = null
+
+    override suspend fun readBackupFile(uri: android.net.Uri): ByteArray? = backupFile
     override var localModel: com.equisteg.mydaycompanion.domain.ai.LocalModelControl = com.equisteg.mydaycompanion.domain.ai.NoLocalModel
     override val maintenance = com.equisteg.mydaycompanion.domain.agent.DailyMaintenance(graph.orchestrator, graph.tasks, graph.plans, graph.routines, graph.clock, remindersReady = { false })
     var wipedStorage = false

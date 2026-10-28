@@ -108,6 +108,8 @@ class TestGraph(
     val policy = ToolAuthorizationPolicy(flags, permissions)
     val export = DataExportService(tasks, events, plans, routines, memories, audit, preferences, clock)
     val deletion = DataDeletionService(listOf(tasks, events, plans, routines, memories, audit, preferences, security))
+    val staging = com.equisteg.mydaycompanion.domain.tools.BackupStaging(clock)
+    val backups = com.equisteg.mydaycompanion.domain.backup.BackupService(export, security)
     val registry = ToolRegistry(
         listOf(
             CreateTasksTool(tasks, events, ids, clock),
@@ -140,6 +142,8 @@ class TestGraph(
             com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
             com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
             com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
+            com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(backups, exportTargets, staging),
+            com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(staging, tasks, events, plans, routines, memories, audit, preferences, security),
         ),
     )
     val orchestrator = AgentOrchestrator(

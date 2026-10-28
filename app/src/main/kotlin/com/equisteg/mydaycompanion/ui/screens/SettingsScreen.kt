@@ -45,6 +45,12 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/json")) { uri ->
         if (uri != null) viewModel.onExportDestinationChosen(uri)
     }
+    val backupLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) viewModel.onBackupDestinationChosen(uri)
+    }
+    val restoreLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) viewModel.onRestoreFileChosen(uri)
+    }
 
     Column(
         modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
@@ -74,6 +80,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
+        BackupSection(state, onBackUp = { backupLauncher.launch(viewModel.backupFileName()) }, onRestore = { restoreLauncher.launch(arrayOf("*/*")) })
         OutlinedButton(onClick = { exportLauncher.launch("mydaycompanion-export.json") }, enabled = !state.busy) {
             Text("Export all data")
         }
