@@ -1116,6 +1116,8 @@ class MainViewModel(
     fun onAppForeground() {
         // The ticker counts uptime, so catch up at once after the phone slept.
         _minute.value = nowTime()
+        // A session that ended while away has nothing left to announce.
+        if (_state.value.focus == null) services.scheduleFocusEnd(null)
         val since = backgroundedAt ?: return
         backgroundedAt = null
         val settings = _state.value.security

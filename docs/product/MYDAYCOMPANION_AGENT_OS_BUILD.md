@@ -425,7 +425,7 @@ app/
 | `tasks.delete` (one task) | L2 | yes | tap always |
 | `tasks.complete` / `tasks.reopen` | L1 | yes | tap when agent-proposed |
 | `tasks.rollOver` (open, non-routine tasks from earlier days, with their steps, to today or up to 14 days ahead; max 50) | L2 | yes | tap when agent-proposed; screen lock if any is personal |
-| `settings.privacy` (lock-screen text, widget names, History period; recorded in History without content) | L1 | no | never (owner only) |
+| `settings.privacy` (lock-screen text, widget names, History period; recorded in History without content; `userOnly`, so no background job can run it; a shorter period needs the confirmed prune first) | L1 | no | never (owner only) |
 | `plan.generate` | L1 | yes | never |
 | `routines.save` / `routines.delete` | L2 | yes | tap |
 | `reminders.schedule` / `reminders.cancel` | L1 | yes | never (owner approved the item) |

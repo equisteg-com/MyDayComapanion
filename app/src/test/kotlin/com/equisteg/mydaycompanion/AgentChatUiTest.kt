@@ -246,6 +246,7 @@ class AgentChatUiTest {
         vm.finishFocus(assertNotNull(vm.state.value.focus))
         assertNotNull(services.focusEndAt)
         vm.onAppForeground()
+        assertNull(services.focusEndAt, "back before the alarm: no late notice")
         vm.onDismissSuggestion()
 
         vm.say("focus")
