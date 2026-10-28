@@ -94,6 +94,7 @@ class TestGraph(
     val audit = InMemoryAuditLog()
     val preferences = InMemoryPreferencesStore()
     val security = InMemorySecurityStore()
+    val privacy = InMemoryPrivacySwitches()
     val device = FixedDeviceState()
     val ids = SequentialIds()
     val exportTargets = InMemoryExportTargets()
@@ -144,6 +145,7 @@ class TestGraph(
             com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
             com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
             com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
+            com.equisteg.mydaycompanion.domain.tools.PrivacySettingsTool(privacy, audit, clock),
             com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(backups, exportTargets, staging),
             com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(staging, tasks, events, plans, routines, memories, audit, preferences, security, com.equisteg.mydaycompanion.domain.repository.NoStoreTransactions),
         ),

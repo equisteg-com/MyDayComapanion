@@ -1,5 +1,25 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 8: hardening
+
+Closes the follow-ups the reviews of parts 6a, 6b and 7b left open.
+- Memory (OQ-22 a): private memories show as "Private memory" until the owner taps Show private and passes the
+  screen lock; they hide again when the app leaves the screen or locks.
+- History (OQ-22 b, c): turning lock-screen text, widget names or the History period on or off now goes through the
+  new `settings.privacy` tool (L1, user-only: the new `ToolSpec.userOnly` keeps background jobs out too; a shorter
+  period is refused until the confirmed prune has removed older entries) and is recorded with only the switch and its value. Filters run in
+  the database, so "Blocked or failed" finds old entries beyond the newest 300.
+- Backup (OQ-24 a, c, d): wrong passphrases count against the file being guessed (its SHA-256); only the right
+  passphrase on that file clears them, so another backup can't reset the count. The 1-hour Restore lock also runs on
+  the uptime clock in the same boot, so setting the phone's clock forward doesn't reopen it. Entries older than the
+  last restore show "from backup". Guesses on two different files make the count "mixed", which only the lock
+  clears, so a decoy backup can't reset it; the wall-clock part of the lock is capped at an hour. Restored days from today on are planned again the first time they are opened.
+- Focus (OQ-27): the end of a focus session is also a notification ("Focus time is up", no task name) when the app
+  is closed; stopping, finishing, the app lock and "Delete everything" cancel it. Inexact like reminders.
+- Moves: a move of a personal task is checked again after the screen lock, right before it runs.
+- Still accepted: the backup passphrase exists briefly as a text-field string (OQ-24 b).
+- No new permission, dependency or database change.
+
 ## 2026-10-28 — Agent OS part 7b: smarter agent
 
 - My day is a short chat. Typed (or spoken) lines are first checked against fixed command rules on the phone

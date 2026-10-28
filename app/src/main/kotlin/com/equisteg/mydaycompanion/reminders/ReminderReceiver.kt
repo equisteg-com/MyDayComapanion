@@ -45,6 +45,7 @@ class ReminderReceiver : BroadcastReceiver() {
                 when (intent.action) {
                     ACTION_SHOW -> show(context, app, intent)
                     ACTION_SNOOZE -> snooze(context, intent)
+                    ACTION_FOCUS_END -> focusEnded(context)
                     ACTION_DONE -> done(context, app, intent.getStringExtra(EXTRA_TASK_ID), intent.getIntExtra(EXTRA_NOTIFICATION_ID, 0))
                     ACTION_MAINTENANCE,
                     Intent.ACTION_BOOT_COMPLETED,
@@ -117,6 +118,28 @@ class ReminderReceiver : BroadcastReceiver() {
         NotificationManagerCompat.from(context).notify(id, builder.build())
     }
 
+    /** A focus session ended while the app was away. No task name: the lock screen may show it. */
+    private fun focusEnded(context: Context) {
+        if (!canNotify(context)) return
+        ensureChannels(context)
+        val open = PendingIntent.getActivity(
+            context, 0, Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        @Suppress("MissingPermission") // checked in canNotify
+        NotificationManagerCompat.from(context).notify(
+            FOCUS_NOTIFICATION_ID,
+            NotificationCompat.Builder(context, CHANNEL_REMINDERS)
+                .setSmallIcon(R.drawable.ic_notification)
+                .setContentTitle(FOCUS_TITLE)
+                .setContentText("Open MyDayCompanion to mark it done or take a break.")
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
+                .build(),
+        )
+    }
+
     /** Reminder ids for events look like `event:<refId>:<date>`; the refId itself may contain colons. */
     private suspend fun eventStillPlanned(app: MyDayCompanionApp, reminderId: String?): Boolean {
         val rest = reminderId?.removePrefix("event:")?.takeIf { it != reminderId } ?: return false
@@ -167,6 +190,9 @@ class ReminderReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE = "com.equisteg.mydaycompanion.action.REMINDER_SNOOZE"
         const val SNOOZE_MINUTES = 10
         const val ACTION_MAINTENANCE = "com.equisteg.mydaycompanion.action.DAILY_MAINTENANCE"
+        const val ACTION_FOCUS_END = "com.equisteg.mydaycompanion.action.FOCUS_END"
+        const val FOCUS_TITLE = "Focus time is up"
+        const val FOCUS_NOTIFICATION_ID = 0x0F0C05
         const val EXTRA_KIND = "kind"
         const val EXTRA_TITLE = "title"
         const val EXTRA_BODY = "body"

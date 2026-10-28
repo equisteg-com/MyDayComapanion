@@ -197,4 +197,26 @@ class RoomStorageTest {
         assertEquals(setOf("t1", "t2"), tasks.all().map { it.id }.toSet())
         assertEquals(1, audit.count())
     }
+
+    @Test
+    fun `History filters run in SQL and find old matches past the newest entries`() = runTest {
+        val audit = RoomAuditLog(db)
+        // One old denied entry, then many newer successful ones: the filter must still find it.
+        audit.record(AuditEntry("old-denied", now.minusSeconds(3_600), AuditActor.AGENT, "data.export", RiskLevel.L3, AuditDecision.DENIED, AuditOutcome.NOT_EXECUTED))
+        repeat(20) { i ->
+            audit.record(AuditEntry("n$i", now.plusSeconds(i.toLong()), AuditActor.USER, "tasks.complete", RiskLevel.L1, AuditDecision.ALLOWED, AuditOutcome.SUCCESS))
+        }
+        audit.record(AuditEntry("sys", now.plusSeconds(100), AuditActor.SYSTEM, "backup.restore", RiskLevel.L4, AuditDecision.ALLOWED, AuditOutcome.SUCCESS))
+
+        val few = 5
+        assertTrue(audit.recent(few).none { it.id == "old-denied" })
+        assertEquals(listOf("old-denied"), audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.ATTENTION, few).map { it.id })
+        assertEquals(listOf("sys", "old-denied"), audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.HIGH_RISK, few).map { it.id })
+        assertEquals(listOf("old-denied"), audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.BY_ASSISTANT, few).map { it.id })
+        assertEquals(listOf("sys"), audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.AUTOMATIC, few).map { it.id })
+        assertEquals(few, audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.BY_ME, few).size)
+        assertEquals(few, audit.recentMatching(com.equisteg.mydaycompanion.domain.audit.HistoryFilter.ALL, few).size)
+        assertEquals("sys", audit.latestSuccess("backup.restore")?.id)
+        assertEquals(null, audit.latestSuccess("data.export"))
+    }
 }

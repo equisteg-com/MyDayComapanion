@@ -47,6 +47,8 @@ data class ToolSpec(
     /** How the tool proves it did what it claimed. */
     val verification: String,
     val auditRequired: Boolean = true,
+    /** Only the owner's own tap may run it: never the agent, never a background (SYSTEM) job. */
+    val userOnly: Boolean = false,
 )
 
 sealed interface ArgsValidation {

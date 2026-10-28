@@ -29,6 +29,7 @@ import com.equisteg.mydaycompanion.domain.memory.MemoryItem
 import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
 import com.equisteg.mydaycompanion.domain.tools.AddMemoryTool
 import com.equisteg.mydaycompanion.domain.tools.OneMemoryTool
+import com.equisteg.mydaycompanion.domain.tools.PrivacySettingsTool
 import com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool
 import com.equisteg.mydaycompanion.domain.model.DayPlan
 import com.equisteg.mydaycompanion.domain.model.Routine
@@ -83,6 +84,8 @@ data class PendingConfirmation(
     val title: String,
     val body: String,
     val steps: List<ApprovalStep> = listOf(ApprovalStep.TAP),
+    /** For a move offered by the agent: the task as offered, checked again right before it runs. */
+    val basedOn: Task? = null,
 )
 
 /** One line of the chat with the agent. Kept in memory only, never stored or written to History. */
@@ -106,7 +109,7 @@ data class TaskChoice(val text: String, val options: List<Task>, val move: Agent
 /** A focus session; [endsAtMillis] uses the app's clock. Nothing is saved. */
 data class FocusSession(val minutes: Int, val endsAtMillis: Long, val taskId: String?, val title: String?, val remainingSeconds: Long)
 
-enum class AuthPurpose { UNLOCK, APPROVE }
+enum class AuthPurpose { UNLOCK, APPROVE, REVEAL }
 
 /** Asks the activity to show the system fingerprint/face/PIN prompt. */
 data class AuthRequest(val purpose: AuthPurpose, val title: String, val subtitle: String)
@@ -149,6 +152,10 @@ data class UiState(
     val memories: List<MemoryItem> = emptyList(),
     val historyFilter: HistoryFilter = HistoryFilter.ALL,
     val historyKeepDays: Int = HistoryRetention.DEFAULT_DAYS,
+    /** When the last restore ran; History marks the entries older than it as "from backup" (OQ-24 c). */
+    val restoredAt: Instant? = null,
+    /** Private memories show their text only after the owner verifies; hidden again when the app leaves the screen or locks (OQ-22 a). */
+    val privateShown: Boolean = false,
     /** "Show reminder text on the lock screen" (off by default). */
     val lockScreenText: Boolean = false,
     val backupPrompt: BackupPrompt? = null,
@@ -307,7 +314,10 @@ class MainViewModel(
         request(ProposedAction("memory.delete", OneMemoryTool.args(memoryId)), "Forget this?", "The agent stops using it, and it is deleted from this phone.")
     }
 
-    fun onHistoryFilter(filter: HistoryFilter) = _state.update { it.copy(historyFilter = filter) }
+    fun onHistoryFilter(filter: HistoryFilter) {
+        _state.update { it.copy(historyFilter = filter) }
+        refreshHistory()
+    }
 
     /**
      * How long History keeps entries. A longer period applies at once; a shorter one removes older
@@ -329,22 +339,33 @@ class MainViewModel(
         )
     }
 
-    private fun applyHistoryKeepDays(days: Int) {
-        services.deviceSettings.historyKeepDays = days
-        _state.update { it.copy(historyKeepDays = days) }
+    private suspend fun applyHistoryKeepDays(days: Int) {
+        setPrivacy(PrivacySettingsTool.args(PrivacySettingsTool.HISTORY_KEEP_DAYS, days.toString()))
     }
 
     /** Whether reminders show what they are for on the secure lock screen. */
-    fun onLockScreenText(show: Boolean) {
-        services.deviceSettings.lockScreenText = show
-        _state.update { it.copy(lockScreenText = show) }
+    fun onLockScreenText(show: Boolean) = launchBusy {
+        setPrivacy(PrivacySettingsTool.args(PrivacySettingsTool.LOCK_SCREEN_TEXT, show))
     }
 
     /** The home-screen widget shows names only when the owner allows it; it redraws at once either way. */
-    fun onWidgetTitles(show: Boolean) {
-        services.deviceSettings.widgetTitles = show
-        _state.update { it.copy(widgetTitles = show) }
+    fun onWidgetTitles(show: Boolean) = launchBusy {
+        setPrivacy(PrivacySettingsTool.args(PrivacySettingsTool.WIDGET_TITLES, show))
         services.refreshWidget()
+    }
+
+    /** Privacy switches go through the orchestrator so each change shows in History (which switch and its value only). */
+    private suspend fun setPrivacy(args: kotlinx.serialization.json.JsonObject) {
+        val r = services.orchestrator.execute(ProposedAction("settings.privacy", args), Requester.USER)
+        val d = services.deviceSettings
+        _state.update {
+            it.copy(
+                lockScreenText = d.lockScreenText,
+                widgetTitles = d.widgetTitles,
+                historyKeepDays = d.historyKeepDays,
+                message = if (r is ExecutionResult.Done) it.message else describe(r),
+            )
+        }
     }
 
     fun onThemeMode(mode: ThemeMode) {
@@ -477,7 +498,7 @@ class MainViewModel(
         suggestion.basedOn?.let { offered ->
             // The move carries the whole task as it was offered; never write it back over a later edit.
             if (services.tasks.get(offered.id) != offered) {
-                chat(owner = false, "That task changed since I offered this, so I left it. Ask me again.")
+                chat(owner = false, STALE_MOVE)
                 return
             }
         }
@@ -486,7 +507,7 @@ class MainViewModel(
                 val s = _state.value
                 // The tap on the card was the Confirm step; a personal task still asks for the owner's verification.
                 val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges) - ApprovalStep.TAP
-                advance(PendingConfirmation(suggestion.action, r.actionFingerprint, suggestion.text, "This includes a personal task.", steps))
+                advance(PendingConfirmation(suggestion.action, r.actionFingerprint, suggestion.text, "This includes a personal task.", steps, basedOn = suggestion.basedOn))
             }
             is ExecutionResult.Done -> replanAfter(suggestion.action)
             else -> _state.update { it.copy(message = describe(r)) }
@@ -501,6 +522,8 @@ class MainViewModel(
     private fun startFocus(minutes: Int, task: Task?) {
         val ends = services.clock.millis() + minutes * 60_000L
         _state.update { it.copy(focus = FocusSession(minutes, ends, task?.id, task?.title, minutes * 60L), suggestion = null) }
+        // The end is also shown as a notification if the app is closed by then (OQ-27).
+        services.scheduleFocusEnd(ends)
         chat(owner = false, "Focus for $minutes minutes" + (task?.let { " on \"${it.title}\"" } ?: "") + ". I'll tell you when time's up.")
         focusJob?.cancel()
         focusJob = viewModelScope.launch {
@@ -524,6 +547,8 @@ class MainViewModel(
     }
 
     internal fun finishFocus(focus: FocusSession) {
+        // In the background the alarm is what tells the owner; only cancel it while the app is on screen.
+        if (backgroundedAt == null) services.scheduleFocusEnd(null)
         _state.update { it.copy(focus = null) }
         val text = "Time's up: ${focus.minutes} minutes of focus done."
         chat(owner = false, text)
@@ -536,6 +561,7 @@ class MainViewModel(
 
     fun onStopFocus() {
         focusJob?.cancel()
+        services.scheduleFocusEnd(null)
         _state.update { it.copy(focus = null) }
     }
 
@@ -732,9 +758,14 @@ class MainViewModel(
         }
     }
 
+    /** Days from today on that came in with a restore and haven't been shown since. */
+    private val replanOnView = mutableSetOf<LocalDate>()
+
     fun selectDate(date: LocalDate) {
         selectedDate.value = date
         _state.update { it.copy(selectedDate = date) }
+        // A restored day keeps its blocks but not its "couldn't fit" notes; plan it again on first view (OQ-24 d).
+        if (replanOnView.remove(date)) launchBusy { replan(date) }
     }
 
     fun onExportDestinationChosen(uri: Uri) = launchBusy {
@@ -817,8 +848,9 @@ class MainViewModel(
                 return@launchBusy
             }
             val file = backupFile ?: return@launchBusy
+            val fileId = withContext(background) { sha256Hex(file) }
             when (val opened = withContext(background) { BackupCodec().decrypt(file, passphrase) }) {
-                Decrypted.WrongPassphraseOrTampered -> onWrongBackupPassphrase()
+                Decrypted.WrongPassphraseOrTampered -> onWrongBackupPassphrase(fileId)
                 is Decrypted.Unreadable -> {
                     backupFile = null
                     val msg = if (opened.reason == "UNSUPPORTED_VERSION") {
@@ -829,7 +861,12 @@ class MainViewModel(
                     _state.update { it.copy(backupPrompt = null, message = msg) }
                 }
                 is Decrypted.Ok -> {
-                    services.deviceSettings.restoreFailures = 0
+                    // Only the file the wrong guesses were made on clears them; another backup can't.
+                    val settings = services.deviceSettings
+                    if (settings.restoreFailures == 0 || settings.restoreFailuresFile == fileId) {
+                        settings.restoreFailures = 0
+                        settings.restoreFailuresFile = ""
+                    }
                     backupFile = null
                     val read = withContext(background) { BackupReader.read(opened.plaintext).also { opened.plaintext.fill(0) } }
                     _state.update { it.copy(backupPrompt = null) }
@@ -859,12 +896,21 @@ class MainViewModel(
         _state.update { it.copy(backupPrompt = null) }
     }
 
-    private fun onWrongBackupPassphrase() {
+    private fun onWrongBackupPassphrase(fileId: String) {
         val settings = services.deviceSettings
         val failures = settings.restoreFailures + 1
+        // The count belongs to the file guessed on. Guesses on two files make it "mixed", which only the
+        // lock clears, so a backup someone can open can't be used to reset guessing on another.
+        settings.restoreFailuresFile = when (settings.restoreFailuresFile) {
+            "", fileId -> fileId
+            else -> MIXED_FILES
+        }
         if (failures >= MAX_RESTORE_FAILURES) {
             settings.restoreFailures = 0
+            settings.restoreFailuresFile = ""
             settings.restoreLockedUntilMillis = services.clock.millis() + RESTORE_LOCK.toMillis()
+            settings.restoreLockedAtElapsed = services.elapsedMillis()
+            settings.restoreLockedBoot = services.bootCount()
             backupFile = null
             _state.update { it.copy(backupPrompt = null, message = restoreLockedMessage()) }
         } else {
@@ -901,12 +947,31 @@ class MainViewModel(
         }
     }
 
+    /**
+     * Restore stays closed for [RESTORE_LOCK] by the wall clock and, in the same boot, by the uptime
+     * clock too, so setting the phone's clock forward doesn't reopen it (OQ-24 a). On a phone that
+     * doesn't report its boot count (0), a lock from before a restart can last up to an hour longer.
+     */
     private fun restoreLockedMessage(): String? {
-        val until = services.deviceSettings.restoreLockedUntilMillis
-        if (until <= services.clock.millis()) return null
-        val at = Instant.ofEpochMilli(until).atZone(services.clock.zone).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
+        val settings = services.deviceSettings
+        val now = services.clock.millis()
+        // Capped, so setting the clock back can't stretch the lock past an hour.
+        val wallLeft = (settings.restoreLockedUntilMillis - now).coerceAtMost(RESTORE_LOCK.toMillis())
+        val elapsed = services.elapsedMillis()
+        val since = elapsed - settings.restoreLockedAtElapsed
+        val uptimeLeft = if (settings.restoreLockedBoot == services.bootCount() && settings.restoreLockedAtElapsed > 0 && since >= 0) {
+            RESTORE_LOCK.toMillis() - since
+        } else {
+            0L
+        }
+        val left = maxOf(wallLeft, uptimeLeft)
+        if (left <= 0) return null
+        val at = Instant.ofEpochMilli(now + left).atZone(services.clock.zone).toLocalTime().truncatedTo(ChronoUnit.MINUTES)
         return "Too many wrong passphrases. Restore opens again at $at."
     }
+
+    private fun sha256Hex(bytes: ByteArray): String =
+        java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { String.format(java.util.Locale.ROOT, "%02x", it) }
 
     /** Forgets a staged passphrase or backup when its approval is abandoned. */
     private fun discardStaged(action: ProposedAction?) {
@@ -921,6 +986,9 @@ class MainViewModel(
         loadMemories()
         services.maintenance.run()
         replan()
+        val today = today()
+        replanOnView.clear()
+        replanOnView += services.plans.all().map { it.date }.filter { it >= today && it != _state.value.selectedDate }
     }
 
     fun onDeleteEverything() = launchBusy {
@@ -980,6 +1048,17 @@ class MainViewModel(
                         }
                 }
             }
+            AuthPurpose.REVEAL -> when (outcome) {
+                AuthOutcome.SUCCEEDED -> {
+                    services.challenges.onDeviceCredentialPassed()
+                    _state.update { it.copy(privateShown = true) }
+                }
+                // Without a screen lock there is nothing to check against; the phone itself is open.
+                AuthOutcome.UNAVAILABLE -> _state.update {
+                    it.copy(privateShown = true, message = "This phone has no screen lock, so private memories can't be protected. Set one in Android settings.")
+                }
+                AuthOutcome.CANCELLED -> Unit
+            }
         }
     }
 
@@ -1002,6 +1081,13 @@ class MainViewModel(
         _state.update { it.copy(challenge = null, pending = null) }
     }
 
+    /** The owner asked to see private memories: the system prompt checks it's them first. */
+    fun onShowPrivate() = _state.update {
+        it.copy(authRequest = AuthRequest(AuthPurpose.REVEAL, "Show private memories", "Confirm it's you"))
+    }
+
+    fun onHidePrivate() = _state.update { it.copy(privateShown = false) }
+
     fun onUnlockRequested() = _state.update {
         it.copy(authRequest = AuthRequest(AuthPurpose.UNLOCK, "Unlock MyDayCompanion", "Use your fingerprint, face or screen lock"))
     }
@@ -1021,6 +1107,8 @@ class MainViewModel(
 
     fun onAppBackground() {
         // The system credential screen sends the app to the background on older Android; that is not leaving the app.
+        // Private memories hide whenever the app leaves the screen, except while the reveal prompt itself is up.
+        if (_state.value.authRequest?.purpose != AuthPurpose.REVEAL) _state.update { it.copy(privateShown = false) }
         if (_state.value.authRequest != null) return
         backgroundedAt = services.clock.instant()
     }
@@ -1028,6 +1116,8 @@ class MainViewModel(
     fun onAppForeground() {
         // The ticker counts uptime, so catch up at once after the phone slept.
         _minute.value = nowTime()
+        // A session that ended while away has nothing left to announce.
+        if (_state.value.focus == null) services.scheduleFocusEnd(null)
         val since = backgroundedAt ?: return
         backgroundedAt = null
         val settings = _state.value.security
@@ -1035,7 +1125,9 @@ class MainViewModel(
             discardStaged(_state.value.pending?.action)
             onCancelBackupPrompt()
             focusJob?.cancel()
-            _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null, chat = emptyList(), suggestion = null, choice = null, focus = null) }
+            services.scheduleFocusEnd(null)
+            replanOnView.clear()
+            _state.update { it.copy(locked = true, pending = null, challenge = null, proposal = null, chat = emptyList(), suggestion = null, choice = null, focus = null, privateShown = false) }
         }
     }
 
@@ -1113,6 +1205,13 @@ class MainViewModel(
             }
             null -> {
                 _state.update { it.copy(pending = null, challenge = null) }
+                // The task may have changed while the owner verified; never write the offered copy over it.
+                pending.basedOn?.let { offered ->
+                    if (services.tasks.get(offered.id) != offered) {
+                        chat(owner = false, STALE_MOVE)
+                        return
+                    }
+                }
                 val confirmation = UserConfirmation(pending.fingerprint)
                 // Key derivation and encryption take a second or two: keep them off the main thread.
                 val r = if (pending.action.toolId.startsWith("backup.")) {
@@ -1132,7 +1231,7 @@ class MainViewModel(
                 // Reload after any restore that ran, so the screens never show settings the stores no longer hold.
                 if (pending.action.toolId == "backup.restore" && (r is ExecutionResult.Done || r is ExecutionResult.Failed)) afterRestore()
                 if (r is ExecutionResult.Done && pending.action.toolId == "history.prune") {
-                    (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let(::applyHistoryKeepDays)
+                    (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let { applyHistoryKeepDays(it) }
                 }
                 val done = r is ExecutionResult.Done
                 val message = when {
@@ -1154,6 +1253,7 @@ class MainViewModel(
      */
     private suspend fun wipeEverything() {
         withContext(background) { services.wipeLocalStorage() }
+        replanOnView.clear()
         _state.update { UiState(selectedDate = it.selectedDate, wiped = true, message = "Everything on this phone was deleted.") }
     }
 
@@ -1164,8 +1264,11 @@ class MainViewModel(
 
     fun refreshHistory() {
         viewModelScope.launch {
-            val entries = services.audit.recent(HISTORY_SHOWN)
-            _state.update { it.copy(history = entries) }
+            // Filtered in the database, so a filter finds its newest matches however old (OQ-22 c).
+            val filter = _state.value.historyFilter
+            val entries = services.audit.recentMatching(filter, HISTORY_SHOWN)
+            val restoredAt = services.audit.latestSuccess("backup.restore")?.timestamp
+            _state.update { if (it.historyFilter == filter) it.copy(history = entries, restoredAt = restoredAt) else it }
         }
     }
 
@@ -1265,6 +1368,8 @@ class MainViewModel(
 
         /** Wrong backup passphrases in a row before Restore closes for [RESTORE_LOCK] (build doc §7.3). */
         const val MAX_RESTORE_FAILURES = 10
+        private const val MIXED_FILES = "*"
+        private const val STALE_MOVE = "That task changed since I offered this, so I left it. Ask me again."
         val RESTORE_LOCK: Duration = Duration.ofHours(1)
 
         fun factory(services: AppServices) = object : ViewModelProvider.Factory {

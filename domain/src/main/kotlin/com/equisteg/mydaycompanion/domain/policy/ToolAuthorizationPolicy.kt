@@ -61,8 +61,8 @@ class ToolAuthorizationPolicy(
         if (spec.featureFlag != null && !flags.isEnabled(spec.featureFlag)) {
             return PolicyDecision.Deny(DenyReason.FEATURE_DISABLED, spec.featureFlag)
         }
-        if (requester == Requester.AGENT && !spec.agentProposable) return PolicyDecision.Deny(DenyReason.NOT_AGENT_PROPOSABLE)
-        if (requester == Requester.SYSTEM && (spec.riskLevel > RiskLevel.L1 || spec.confirmation != Confirmation.NEVER)) {
+        if (requester == Requester.AGENT && (!spec.agentProposable || spec.userOnly)) return PolicyDecision.Deny(DenyReason.NOT_AGENT_PROPOSABLE)
+        if (requester == Requester.SYSTEM && (spec.userOnly || spec.riskLevel > RiskLevel.L1 || spec.confirmation != Confirmation.NEVER)) {
             return PolicyDecision.Deny(DenyReason.NOT_SYSTEM_RUNNABLE)
         }
         if (!argsValid) return PolicyDecision.Deny(DenyReason.INVALID_ARGUMENTS)

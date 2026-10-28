@@ -105,23 +105,32 @@ interface AppServices {
 
     /** Asks the home-screen widget to read today again (F19). */
     fun refreshWidget() {}
+
+    /** Time since the phone started, which changing the clock in Settings doesn't move. */
+    fun elapsedMillis(): Long = clock.millis()
+
+    /** How many times the phone has started; tells whether [elapsedMillis] values come from the same boot. */
+    fun bootCount(): Int = 0
+
+    /** Shows "focus time is up" at [atMillis] even if the app is closed (OQ-27); null cancels it. */
+    fun scheduleFocusEnd(atMillis: Long?) {}
 }
 
 /** Small owner switches that are not part of the encrypted data (they hold no personal content). */
-interface DeviceSettings {
+interface DeviceSettings : com.equisteg.mydaycompanion.domain.tools.PrivacySwitches {
     var calendarInPlans: Boolean
 
     /** Use the phone's Gemini Nano to understand typed and spoken text, where the phone has it. */
     var smartModel: Boolean
 
     /** How many days History keeps (F16); one of [com.equisteg.mydaycompanion.domain.audit.HistoryRetention.CHOICES_DAYS]. */
-    var historyKeepDays: Int
+    override var historyKeepDays: Int
 
     /** Show what a reminder is for on the secure lock screen. Off by default (build doc §11). */
-    var lockScreenText: Boolean
+    override var lockScreenText: Boolean
 
     /** Show task and event names on the home-screen widget (F19). Off by default: the widget is outside the app lock. */
-    var widgetTitles: Boolean
+    override var widgetTitles: Boolean
 
     /** Light, dark or match the phone ([com.equisteg.mydaycompanion.ui.theme.ThemeMode] name), and wallpaper colours on Android 12+. */
     var themeMode: String
@@ -133,6 +142,16 @@ interface DeviceSettings {
      */
     var restoreFailures: Int
     var restoreLockedUntilMillis: Long
+
+    /**
+     * SHA-256 of the backup file the wrong passphrases were counted against. Only opening that same
+     * file clears the count, so opening another backup can't reset guessing on this one (OQ-24 a).
+     */
+    var restoreFailuresFile: String
+
+    /** When Restore closed, on the uptime clock, and which boot that was: changing the phone's clock can't reopen it. */
+    var restoreLockedAtElapsed: Long
+    var restoreLockedBoot: Int
 
     companion object {
         /** Match the phone; the UI maps unknown names to this too. */
@@ -182,6 +201,15 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var restoreLockedUntilMillis: Long
         get() = prefs.getLong("restore_locked_until", 0L)
         set(value) { prefs.edit().putLong("restore_locked_until", value).commit() }
+    override var restoreFailuresFile: String
+        get() = prefs.getString("restore_failures_file", null).orEmpty()
+        set(value) { prefs.edit().putString("restore_failures_file", value).commit() }
+    override var restoreLockedAtElapsed: Long
+        get() = prefs.getLong("restore_locked_at_elapsed", 0L)
+        set(value) { prefs.edit().putLong("restore_locked_at_elapsed", value).commit() }
+    override var restoreLockedBoot: Int
+        get() = prefs.getInt("restore_locked_boot", -1)
+        set(value) { prefs.edit().putInt("restore_locked_boot", value).commit() }
 }
 
 /**
@@ -241,6 +269,13 @@ class AppContainer(context: Context) : AppServices {
 
     override fun refreshWidget() = com.equisteg.mydaycompanion.widget.TodayWidgetProvider.refresh(appContext)
 
+    override fun elapsedMillis(): Long = android.os.SystemClock.elapsedRealtime()
+
+    override fun bootCount(): Int =
+        android.provider.Settings.Global.getInt(appContext.contentResolver, android.provider.Settings.Global.BOOT_COUNT, 0)
+
+    override fun scheduleFocusEnd(atMillis: Long?) = com.equisteg.mydaycompanion.reminders.FocusAlarm.schedule(appContext, atMillis)
+
     override val orchestrator: AgentOrchestrator by lazy {
         val ids = IdGenerator.RANDOM
         val planner = DeterministicPlanner()
@@ -293,6 +328,7 @@ class AppContainer(context: Context) : AppServices {
                     com.equisteg.mydaycompanion.domain.tools.DeleteMemoryTool(memories),
                     com.equisteg.mydaycompanion.domain.tools.PurgeExpiredMemoriesTool(memories, clock),
                     com.equisteg.mydaycompanion.domain.tools.PruneHistoryTool(audit, clock),
+                    com.equisteg.mydaycompanion.domain.tools.PrivacySettingsTool(deviceSettings, audit, clock),
                     com.equisteg.mydaycompanion.domain.tools.CreateBackupTool(com.equisteg.mydaycompanion.domain.backup.BackupService(export, security), exportTargets, backupStaging),
                     com.equisteg.mydaycompanion.domain.tools.RestoreBackupTool(backupStaging, tasks, events, plans, routines, memories, audit, preferences, security, com.equisteg.mydaycompanion.data.repository.RoomStoreTransactions(db)),
                 ),
