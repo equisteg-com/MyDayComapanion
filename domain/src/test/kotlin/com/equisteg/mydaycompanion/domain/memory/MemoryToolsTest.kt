@@ -64,6 +64,7 @@ class MemoryToolsTest {
         assertEquals(RiskLevel.L2, ask.riskLevel)
         assertIs<ExecutionResult.Done>(g.run("memory.activate", keep, confirmed = true))
         assertEquals(MemoryStatus.ACTIVE, g.memories.get(item.id)!!.status)
+        assertEquals(Retention.UNTIL_DELETED, g.memories.get(item.id)!!.retention, "a kept memory does not expire")
         assertTrue("Prefers the gym before 8" in g.prompt())
 
         for (tool in listOf("memory.delete", "memory.reject", "memory.add")) {
@@ -93,6 +94,7 @@ class MemoryToolsTest {
         val id = g.memories.all().single().id
         assertIs<ExecutionResult.Done>(g.run("memory.reject", OneMemoryTool.args(id)))
         assertEquals(MemoryStatus.REJECTED, g.memories.get(id)!!.status)
+        assertFalse("tea" in g.memories.get(id)!!.content, "only a hash of a turned-down suggestion is kept")
         assertEquals(ExecutionResult.Failed("ALREADY_KNOWN"), g.propose("likes tea in the afternoon."))
         assertFalse("tea" in g.prompt())
         // The owner can still say it in their own words.
@@ -116,6 +118,17 @@ class MemoryToolsTest {
         assertTrue(ask.personal, "the owner's chosen verification applies")
         assertIs<ExecutionResult.Done>(g.run("memory.delete", OneMemoryTool.args(private.id), confirmed = true))
         assertEquals(null, g.memories.get(private.id))
+    }
+
+    @Test
+    fun `re-typing a private memory as not private needs the owner's verification`() = runTest {
+        val g = TestGraph()
+        g.run("memory.add", AddMemoryTool.args("Therapy on Tuesdays", true))
+        val ask = g.run("memory.add", AddMemoryTool.args("therapy on tuesdays", false))
+        assertIs<ExecutionResult.NeedsConfirmation>(ask)
+        assertTrue(ask.personal)
+        assertEquals(MemorySensitivity.SENSITIVE, g.memories.all().single().sensitivity, "unchanged until verified")
+        assertFalse("Therapy" in g.prompt())
     }
 
     @Test
@@ -155,6 +168,19 @@ class MemoryToolsTest {
         assertEquals(listOf("You usually do \"Gym\" around 07:30"), habits.map { it.content })
         assertTrue(habits.single().confidence in 0.5..0.7)
         assertTrue(HabitObserver().habits(tasks.take(2), emptyList(), now, ZoneOffset.UTC).isEmpty(), "two days are not enough")
+    }
+
+    @Test
+    fun `a habit whose time drifts, or that the memory rules refuse, is not proposed`() = runTest {
+        val g = TestGraph()
+        g.propose("You usually do \"Gym\" around 07:30")
+        g.run("memory.reject", OneMemoryTool.args(g.memories.all().single().id))
+        val later = listOf(done("1", "Gym", "2026-10-02T07:50:00Z"), done("2", "Gym", "2026-10-03T07:45:00Z"), done("3", "Gym", "2026-10-05T07:40:00Z"))
+        assertTrue(HabitObserver().habits(later, g.memories.all(), now, ZoneOffset.UTC).isEmpty(), "\"no\" holds when the time moves")
+
+        val refused = listOf("Change PIN", "Change PIN", "Change PIN").mapIndexed { i, t -> done("p$i", t, "2026-10-0${i + 1}T09:00:00Z") } +
+            listOf("Read", "Read", "Read").mapIndexed { i, t -> done("r$i", t, "2026-10-0${i + 1}T21:00:00Z") }
+        assertEquals(listOf("You usually do \"Read\" around 21:00"), HabitObserver().habits(refused, emptyList(), now, ZoneOffset.UTC).map { it.content })
     }
 
     @Test

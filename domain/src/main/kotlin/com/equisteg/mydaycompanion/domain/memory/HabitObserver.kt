@@ -2,7 +2,6 @@ package com.equisteg.mydaycompanion.domain.memory
 
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
-import com.equisteg.mydaycompanion.domain.tools.memoryKey
 import java.time.Instant
 import java.time.LocalTime
 import java.time.ZoneId
@@ -24,9 +23,15 @@ class HabitObserver(
 ) {
     data class Habit(val content: String, val confidence: Double)
 
+    private val policy = MemoryPolicy()
+
+    private fun candidate(h: Habit, now: Instant) = MemoryItem(
+        "check", MemoryType.BEHAVIOUR, h.content, MemorySource.AGENT_PROPOSED, h.confidence, MemoryStatus.PROPOSED,
+        MemorySensitivity.LOW, Retention.DAYS_365, createdAt = now, updatedAt = now,
+    )
+
     fun habits(tasks: List<Task>, existing: List<MemoryItem>, now: Instant, zone: ZoneId): List<Habit> {
         val since = now.minus(windowDays, ChronoUnit.DAYS)
-        val known = existing.map { memoryKey(it.content) }.toSet()
         return tasks
             .asSequence()
             .filter { it.status == TaskStatus.DONE && !it.personal && it.parentId == null && it.updatedAt >= since && it.updatedAt <= now }
@@ -43,7 +48,8 @@ class HabitObserver(
                 val title = perDay.maxBy { it.updatedAt }.title.trim()
                 Habit("You usually do \"$title\" around ${LocalTime.of(rounded / 60, rounded % 60)}", (perDay.size / 5.0).coerceAtMost(1.0))
             }
-            .filter { memoryKey(it.content) !in known }
+            // Already known (kept, proposed or turned down), or something the memory rules would refuse.
+            .filter { h -> existing.none { it.sameAs(h.content) } && policy.admit(candidate(h, now)) is MemoryDecision.Accepted }
             .sortedByDescending { it.confidence }
             .take(maxProposalsPerRun)
     }

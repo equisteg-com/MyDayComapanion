@@ -115,6 +115,10 @@ class MemoryHistoryUiTest {
         compose.onNodeWithTag("filter-ALL").performClick()
 
         compose.onNodeWithTag("keep-days-30").performScrollTo().performClick()
+        compose.waitUntil(5_000) { has("confirm") }
+        assertTrue(runBlocking { graph.audit.all() }.any { it.id == "old" }, "nothing removed before the tap")
+        assertEquals(180, services.deviceSettings.historyKeepDays)
+        compose.onNodeWithTag("confirm").performClick()
         compose.waitUntil(5_000) { runBlocking { graph.audit.all() }.none { it.id == "old" } }
         assertEquals(30, services.deviceSettings.historyKeepDays)
         assertTrue(runBlocking { graph.audit.all() }.any { it.id == "denied" })
@@ -128,5 +132,7 @@ class MemoryHistoryUiTest {
         compose.onNodeWithTag("lock-screen-text").performScrollTo().performClick().assertIsOn()
         assertTrue(services.deviceSettings.lockScreenText)
         assertTrue(has("open-security-settings"))
+        assertEquals(androidx.core.app.NotificationCompat.VISIBILITY_PRIVATE, com.equisteg.mydaycompanion.reminders.lockScreenVisibility(false))
+        assertEquals(androidx.core.app.NotificationCompat.VISIBILITY_PUBLIC, com.equisteg.mydaycompanion.reminders.lockScreenVisibility(true))
     }
 }

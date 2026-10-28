@@ -87,7 +87,7 @@ fun MemoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         Text(m.content, style = MaterialTheme.typography.bodyLarge)
                         Text("Noticed from your finished tasks. Not used unless you keep it.", style = MaterialTheme.typography.bodySmall)
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Button(onClick = { viewModel.onKeepMemory(m.id) }, enabled = !state.busy, modifier = Modifier.testTag("keep-${m.id}")) { Text("Keep") }
+                            Button(onClick = { viewModel.onKeepMemory(m.id) }, enabled = !state.busy && viewModel.memoryEnabled, modifier = Modifier.testTag("keep-${m.id}")) { Text("Keep") }
                             OutlinedButton(onClick = { viewModel.onRejectMemory(m.id) }, enabled = !state.busy, modifier = Modifier.testTag("reject-${m.id}")) { Text("No thanks") }
                         }
                     }

@@ -25,7 +25,7 @@
 | fixed_events | title, date, start, duration, source | Personal | User text; calendar (Phase 1, read-only, not copied unless planned) | Until user deletes | Yes | Yes |
 | plans, plan_blocks | date, block titles/times, issues, planner version | Personal | Planner | Until user deletes | Yes | Yes |
 | routines | title, frequency, preferred start, duration | Personal | User | Until user deletes | Yes | Yes |
-| memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User (Memory screen) or assistant proposal (habits noticed from finished, non-personal tasks) | Per item: proposals and turned-down proposals 365 d; the owner's own until deleted; expired items removed nightly (`memory.purgeExpired`) | Yes | Yes (Memory screen, one at a time; Delete everything) |
+| memories | content, type, source, confidence, status, sensitivity, retention | Personal / Sensitive | User (Memory screen) or assistant proposal (habits noticed from finished, non-personal tasks) | Per item: suggestions 365 d; a turned-down suggestion keeps only a one-way hash of its text, 365 d; kept and owner-written memories until deleted; expired items removed nightly (`memory.purgeExpired`) | Yes | Yes (Memory screen, one at a time; Delete everything) |
 | audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days by default; owner chooses 30 / 90 / 180 / 365 on History; removed nightly (`history.prune`) | Yes | Yes |
 | preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
 | db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |

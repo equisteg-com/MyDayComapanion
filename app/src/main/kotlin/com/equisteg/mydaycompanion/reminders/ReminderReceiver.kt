@@ -92,7 +92,7 @@ class ReminderReceiver : BroadcastReceiver() {
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
             // On a secure lock screen only "MyDayCompanion: Reminder" shows, unless the owner chose to see
             // the text there (Settings). Personal tasks are titled "Personal task" either way.
-            .setVisibility(if (app.services.deviceSettings.lockScreenText) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_PRIVATE)
+            .setVisibility(lockScreenVisibility(app.services.deviceSettings.lockScreenText))
             .setPublicVersion(
                 NotificationCompat.Builder(context, CHANNEL_REMINDERS).setSmallIcon(R.drawable.ic_notification).setContentTitle(PUBLIC_TITLE).build(),
             )
@@ -190,3 +190,7 @@ class ReminderReceiver : BroadcastReceiver() {
         }
     }
 }
+
+/** What a locked phone may show of a reminder: only the public "Reminder" version unless the owner chose otherwise. */
+internal fun lockScreenVisibility(showText: Boolean): Int =
+    if (showText) NotificationCompat.VISIBILITY_PUBLIC else NotificationCompat.VISIBILITY_PRIVATE

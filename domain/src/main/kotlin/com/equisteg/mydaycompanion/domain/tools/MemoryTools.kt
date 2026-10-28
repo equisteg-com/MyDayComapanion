@@ -10,12 +10,11 @@ import com.equisteg.mydaycompanion.domain.memory.MemoryStatus
 import com.equisteg.mydaycompanion.domain.memory.MemoryStore
 import com.equisteg.mydaycompanion.domain.memory.MemoryType
 import com.equisteg.mydaycompanion.domain.memory.Retention
+import com.equisteg.mydaycompanion.domain.memory.rejectedMarker
+import com.equisteg.mydaycompanion.domain.memory.sameAs
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import java.time.Clock
-
-/** Two memories say the same thing when they match ignoring case, spaces and end punctuation. */
-fun memoryKey(content: String): String = content.trim().lowercase().replace(Regex("\\s+"), " ").trimEnd('.', '!', '?')
 
 /**
  * memory.propose — the assistant suggests something to remember (build doc F9). The memory is
@@ -51,8 +50,7 @@ class ProposeMemoryTool(
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val type = MemoryType.valueOf(args.string("type")!!)
-        val key = memoryKey(args.string("content")!!)
-        if (store.all().any { memoryKey(it.content) == key }) return ToolOutcome.Failure("ALREADY_KNOWN")
+        if (store.all().any { it.sameAs(args.string("content")!!) }) return ToolOutcome.Failure("ALREADY_KNOWN")
         val item = (policy.admit(candidate(args, ids.newId(), type)) as? MemoryDecision.Accepted)?.item ?: return ToolOutcome.Failure("REJECTED")
         store.upsert(item)
         return ToolOutcome.Success("memory proposed", mapOf("memoryId" to item.id))
@@ -118,8 +116,7 @@ class AddMemoryTool(
     }
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
-        val key = memoryKey(args.string("content")!!)
-        val existing = store.all().firstOrNull { memoryKey(it.content) == key }
+        val existing = existingFor(args)
         // Saying it again replaces an old proposal or a "no" with the owner's own words.
         val item = (policy.admit(candidate(args, existing?.id ?: ids.newId())) as? MemoryDecision.Accepted)?.item ?: return ToolOutcome.Failure("REJECTED")
         store.upsert(item)
@@ -130,6 +127,14 @@ class AddMemoryTool(
         val stored = store.get(outcome.data["memoryId"].orEmpty()) ?: return false
         return stored.status == MemoryStatus.ACTIVE && stored.content == args.string("content")!!.trim()
     }
+
+    /**
+     * Re-typing a private memory replaces it, and may make it non-private, so it needs the owner's
+     * verification like any other change to a private memory (build doc §6.1).
+     */
+    override suspend fun touchesPersonal(args: JsonObject): Boolean = existingFor(args)?.sensitivity == MemorySensitivity.SENSITIVE
+
+    private suspend fun existingFor(args: JsonObject): MemoryItem? = store.all().firstOrNull { it.sameAs(args.string("content")!!) }
 
     private fun candidate(args: JsonObject, id: String): MemoryItem {
         val now = clock.instant()
@@ -184,7 +189,8 @@ class ActivateMemoryTool(store: MemoryStore, private val clock: Clock, private v
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val item = target(args) ?: return ToolOutcome.Failure("NOT_FOUND")
         if (item.status != MemoryStatus.PROPOSED) return ToolOutcome.Failure("NOT_PROPOSED")
-        store.upsert(policy.approveByUser(item, clock.instant()))
+        // A kept memory lasts until the owner forgets it; only suggestions expire.
+        store.upsert(policy.approveByUser(item, clock.instant()).copy(retention = Retention.UNTIL_DELETED))
         return ToolOutcome.Success("memory kept")
     }
 
@@ -192,8 +198,8 @@ class ActivateMemoryTool(store: MemoryStore, private val clock: Clock, private v
 }
 
 /**
- * memory.reject — the owner says no to a proposal. The "no" is kept (without being used) so the
- * same thing is not proposed again; it goes with the memory's retention period or a wipe.
+ * memory.reject — the owner says no to a proposal. Only a one-way hash of it is kept (never used,
+ * never shown) so the same thing is not proposed again; it goes after 365 days or with a wipe.
  */
 class RejectMemoryTool(store: MemoryStore, private val clock: Clock) : OneMemoryTool(store) {
     override val spec = ToolSpec(
@@ -208,7 +214,8 @@ class RejectMemoryTool(store: MemoryStore, private val clock: Clock) : OneMemory
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val item = target(args) ?: return ToolOutcome.Failure("NOT_FOUND")
         if (item.status != MemoryStatus.PROPOSED) return ToolOutcome.Failure("NOT_PROPOSED")
-        store.upsert(item.copy(status = MemoryStatus.REJECTED, updatedAt = clock.instant()))
+        // Only a hash of the suggestion is kept, so it is not proposed again but its words are gone.
+        store.upsert(item.copy(status = MemoryStatus.REJECTED, content = rejectedMarker(item.content), updatedAt = clock.instant()))
         return ToolOutcome.Success("memory turned down")
     }
 

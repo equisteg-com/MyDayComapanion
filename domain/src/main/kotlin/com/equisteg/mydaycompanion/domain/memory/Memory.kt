@@ -5,6 +5,25 @@ import com.equisteg.mydaycompanion.domain.safety.ContentSafety
 import java.time.Duration
 import java.time.Instant
 
+/**
+ * Two memories say the same thing when they match ignoring case, spaces, end punctuation and a
+ * trailing "around HH:mm", so a habit whose time drifts is still the same habit.
+ */
+fun memoryKey(content: String): String =
+    content.trim().lowercase().replace(Regex("\\s+"), " ").trimEnd('.', '!', '?').replace(Regex(" around \\d{1,2}:\\d{2}$"), "")
+
+/**
+ * What is kept of a turned-down suggestion: a one-way hash of its key, so it is never proposed
+ * again but its words (which can name a task) are not kept.
+ */
+fun rejectedMarker(content: String): String {
+    val digest = java.security.MessageDigest.getInstance("SHA-256").digest(memoryKey(content).toByteArray())
+    return "rejected:" + digest.joinToString("") { "%02x".format(it) }
+}
+
+/** True when [content] is already stored, kept, proposed or turned down. */
+fun MemoryItem.sameAs(content: String): Boolean = memoryKey(this.content) == memoryKey(content) || this.content == rejectedMarker(content)
+
 enum class MemoryType { PREFERENCE, ROUTINE, RECURRING_TASK, BEHAVIOUR, EXPLICIT_INSTRUCTION, TEMPORARY_CONTEXT }
 
 enum class MemorySource { USER_EXPLICIT, AGENT_PROPOSED, SYSTEM_DERIVED }

@@ -82,7 +82,8 @@ interface AuditDao {
     @Query("SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT :limit") suspend fun recent(limit: Int): List<AuditEntity>
     @Query("SELECT * FROM audit_log ORDER BY timestamp DESC LIMIT :limit") fun observeRecent(limit: Int): Flow<List<AuditEntity>>
     @Query("SELECT * FROM audit_log ORDER BY timestamp") suspend fun all(): List<AuditEntity>
-    // Timestamps are ISO-8601 instants; whole-second cut-offs compare correctly as text.
+    // Timestamps are ISO-8601 instants compared as text. An entry with a fraction of a second in the
+    // same second as the cut-off sorts before it and goes too; at most one second early, which is fine for retention.
     @Query("SELECT COUNT(*) FROM audit_log WHERE timestamp < :before") suspend fun countBefore(before: String): Int
     @Query("DELETE FROM audit_log WHERE timestamp < :before") suspend fun deleteBefore(before: String): Int
     @Query("DELETE FROM audit_log") suspend fun deleteAll()

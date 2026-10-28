@@ -217,7 +217,10 @@ class MainViewModel(
                 val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges) - ApprovalStep.TAP
                 advance(PendingConfirmation(action, r.actionFingerprint, "Keep this memory?", "", steps))
             }
-            else -> _state.update { it.copy(message = describe(r)) }
+            else -> {
+                _state.update { it.copy(message = describe(r)) }
+                loadMemories()
+            }
         }
     }
 
@@ -234,14 +237,29 @@ class MainViewModel(
 
     fun onHistoryFilter(filter: HistoryFilter) = _state.update { it.copy(historyFilter = filter) }
 
-    /** How long History keeps entries. A shorter period removes older entries now. */
+    /**
+     * How long History keeps entries. A longer period applies at once; a shorter one removes older
+     * entries now, which can't be undone, so the owner confirms it first when there are any.
+     */
     fun onHistoryKeepDays(days: Int) = launchBusy {
         if (days !in HistoryRetention.CHOICES_DAYS) return@launchBusy
+        val action = ProposedAction("history.prune", PruneHistoryTool.args(days))
+        val removing = services.audit.countBefore(PruneHistoryTool(services.audit, services.clock).cutoff(days))
+        if (removing == 0) {
+            applyHistoryKeepDays(days)
+            return@launchBusy
+        }
+        advance(
+            PendingConfirmation(
+                action, services.orchestrator.fingerprint(action), "Remove older history?",
+                "$removing ${if (removing == 1) "entry" else "entries"} older than $days days will be deleted. This can't be undone.",
+            ),
+        )
+    }
+
+    private fun applyHistoryKeepDays(days: Int) {
         services.deviceSettings.historyKeepDays = days
         _state.update { it.copy(historyKeepDays = days) }
-        val r = services.orchestrator.execute(ProposedAction("history.prune", PruneHistoryTool.args(days)), Requester.USER)
-        if (r !is ExecutionResult.Done) _state.update { it.copy(message = describe(r)) }
-        refreshHistory()
     }
 
     /** Whether reminders show what they are for on the secure lock screen. */
@@ -627,6 +645,9 @@ class MainViewModel(
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 if (pending.action.toolId.startsWith("memory.")) loadMemories()
+                if (r is ExecutionResult.Done && pending.action.toolId == "history.prune") {
+                    (pending.action.args["keepDays"] as? JsonPrimitive)?.content?.toIntOrNull()?.let(::applyHistoryKeepDays)
+                }
                 _state.update { it.copy(message = if (r is ExecutionResult.Done && pending.action.toolId == "memory.activate") "Kept. The agent will use it." else describe(r)) }
                 refreshHistory()
             }
