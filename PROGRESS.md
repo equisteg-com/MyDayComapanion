@@ -1,5 +1,13 @@
 # Progress
 
+## 2026-10-28 — Agent OS part 9: hide the app from recent apps while it is locked
+
+- OQ-26: while the app lock is on, every screen is `FLAG_SECURE`: blank in the recent-apps preview, no screenshots
+  or screen recording. It is set whenever the lock is switched on (not only while locked), because Android takes
+  the preview as the app goes to the background. With the lock off nothing changes.
+- `SecureWindow` now counts its holders per window, so leaving Memory no longer clears the app-wide flag.
+- D-08 (numeric dates) needed no work: the day-month default and the Settings switch already shipped in part 3.
+
 ## 2026-10-28 — Agent OS part 8: hardening
 
 Closes the follow-ups the reviews of parts 6a, 6b and 7b left open.

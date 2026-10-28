@@ -35,6 +35,7 @@ import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.screens.BackupPassphraseDialog
 import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
+import com.equisteg.mydaycompanion.ui.screens.SecureWindow
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
 import com.equisteg.mydaycompanion.ui.screens.MemoryScreen
 import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
@@ -54,6 +55,10 @@ enum class Destination(val label: String, val icon: ImageVector) {
 fun AppNavigation(viewModel: MainViewModel) {
     var current by rememberSaveable { mutableStateOf(Destination.PLAN) }
     val state by viewModel.state.collectAsStateWithLifecycle()
+
+    // OQ-26: with the app lock on, nothing in the app shows in recent apps or in screenshots.
+    // Set before the app goes to the background, which is when the preview is taken.
+    if (state.security.appLockEnabled) SecureWindow()
 
     if (state.locked) {
         Scaffold { padding -> LockScreen(state, viewModel::onUnlockRequested, viewModel::onPanicWipe, Modifier.padding(padding)) }

@@ -89,6 +89,25 @@ class MemoryHistoryUiTest {
     }
 
     @Test
+    fun `with the app lock on, no screen can be captured or shown in recent apps`() {
+        val vm = MainViewModel(TestServices(graph, appLock = true), Dispatchers.Unconfined)
+        compose.setContent { AppNavigation(vm) }
+        compose.waitForIdle()
+        assertTrue(secure(), "the lock screen")
+        vm.onUnlockRequested()
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        compose.waitUntil(5_000) { has("input") }
+        assertTrue(secure(), "My day, with its Now and Next titles")
+
+        // Memory adds its own hold; leaving it must not clear the app-wide one.
+        compose.onNodeWithTag("nav-MEMORY").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag("nav-HISTORY").performClick()
+        compose.waitForIdle()
+        assertTrue(secure(), "still on after leaving Memory")
+    }
+
+    @Test
     fun `private memories stay hidden until the owner verifies, and hide again on leaving`() {
         runBlocking {
             graph.memories.upsert(
