@@ -77,4 +77,11 @@ class ManifestSecurityTest {
         }.map { it.getAttributeNS(ns, "name") }
         assertEquals(listOf(".reminders.ReminderReceiver", ".widget.TodayWidgetProvider"), names)
     }
+
+    @Test
+    fun `the widget is for the home screen only, never the lock screen`() {
+        val info = DocumentBuilderFactory.newInstance().apply { isNamespaceAware = true }
+            .newDocumentBuilder().parse(File("src/main/res/xml/today_widget_info.xml")).documentElement
+        assertEquals("home_screen", info.getAttributeNS(ns, "widgetCategory"))
+    }
 }

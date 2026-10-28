@@ -251,7 +251,7 @@ private fun WidgetSection(state: UiState, onWidgetTitles: (Boolean) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("Show names on the widget")
-            Text("Off: the widget shows only times, "Task" and "Event". Personal tasks never show their name.", style = MaterialTheme.typography.bodySmall)
+            Text("Off: the widget shows only times, \"Task\" and \"Event\". Personal tasks never show their name.", style = MaterialTheme.typography.bodySmall)
         }
         Switch(
             checked = state.widgetTitles,

@@ -58,4 +58,11 @@ class TodayWidgetTest {
         assertEquals(WidgetSummary("Nothing else planned today", emptyList()), TodayWidget.summarize(plan, tasks, t(18), showTitles = true))
         assertEquals(WidgetSummary("Nothing else planned today", emptyList()), TodayWidget.summarize(null, tasks, t(7), showTitles = true))
     }
+
+    @Test
+    fun `a task whose row can't be read never shows its name`() {
+        val missing = tasks.filterNot { it.id == "t1" }
+        val shown = TodayWidget.summarize(plan, missing, t(10), showTitles = true)
+        assertEquals(listOf("Task", "Team meeting", "Personal task"), shown.lines.map { it.text })
+    }
 }

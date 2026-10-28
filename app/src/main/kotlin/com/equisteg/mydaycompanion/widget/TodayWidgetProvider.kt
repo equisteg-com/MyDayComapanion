@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * The home-screen widget (F19): what is left today, and a button that opens the app to add more.
@@ -30,11 +32,15 @@ import java.time.temporal.ChronoUnit
 class TodayWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
         val pending = goAsync()
+        val started = wipes.get()
         scope.launch {
             try {
-                val app = context.applicationContext as MyDayCompanionApp
-                // A locked Keystore or a missing database must never crash the home screen.
-                val views = runCatching { render(context, load(app.services)) }.getOrElse { render(context, null) }
+                // A locked Keystore, a missing database or an unexpected Application must never crash the home screen.
+                val loaded = runCatching {
+                    if (wiping.get()) null else render(context, load((context.applicationContext as MyDayCompanionApp).services))
+                }.getOrNull()
+                // A read that overlapped "Delete everything" must not draw the old day back.
+                val views = if (loaded == null || wiping.get() || wipes.get() != started) render(context, null) else loaded
                 ids.forEach { manager.updateAppWidget(it, views) }
             } finally {
                 pending.finish()
@@ -44,6 +50,8 @@ class TodayWidgetProvider : AppWidgetProvider() {
 
     companion object {
         private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        private val wiping = AtomicBoolean(false)
+        private val wipes = AtomicInteger(0)
         private val rows = listOf(
             R.id.widget_line_1 to R.id.widget_time_1,
             R.id.widget_line_2 to R.id.widget_time_2,
@@ -92,6 +100,21 @@ class TodayWidgetProvider : AppWidgetProvider() {
                     .setAction(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
                     .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids),
             )
+        }
+
+        /**
+         * Runs "Delete everything" with the widget held blank: no update draws while [wipe] runs, an
+         * update that started before it draws blank, and the widget is cleared afterwards whatever happens.
+         */
+        fun <T> whileWiping(context: Context, wipe: () -> T): T {
+            wiping.set(true)
+            wipes.incrementAndGet()
+            try {
+                return wipe()
+            } finally {
+                runCatching { clear(context) }
+                wiping.set(false)
+            }
         }
 
         /** After "Delete everything": nothing from before may stay on the home screen. */

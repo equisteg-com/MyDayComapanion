@@ -29,6 +29,7 @@ import org.robolectric.annotation.Config
 import java.time.LocalDate
 import java.time.LocalTime
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -90,5 +91,12 @@ class WidgetUiTest {
         val beforeReplan = services.widgetRefreshes
         vm.onReplan()
         compose.waitUntil(5_000) { services.widgetRefreshes > beforeReplan }
+    }
+
+    @Test
+    fun `Delete everything hands back the wipe's result and lets updates draw again, even when the wipe fails`() {
+        assertTrue(TodayWidgetProvider.whileWiping(context) { true })
+        assertFailsWith<IllegalStateException> { TodayWidgetProvider.whileWiping<Boolean>(context) { error("disk") } }
+        assertEquals(false, TodayWidgetProvider.whileWiping(context) { false })
     }
 }

@@ -139,6 +139,7 @@ class ReminderReceiver : BroadcastReceiver() {
             is ExecutionResult.Done -> {
                 NotificationManagerCompat.from(context).cancel(notificationId)
                 app.services.maintenance.syncReminders()
+                app.services.refreshWidget()
             }
             is ExecutionResult.NeedsConfirmation -> if (canNotify(context)) {
                 @Suppress("MissingPermission")

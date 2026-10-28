@@ -205,7 +205,10 @@ class AppContainer(context: Context) : AppServices {
         DailyMaintenance(
             orchestrator, tasks, plans, routines, clock,
             remindersReady = { flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS) },
-            afterRun = { scheduler.scheduleMaintenance() },
+            afterRun = {
+                scheduler.scheduleMaintenance()
+                refreshWidget()
+            },
             memories = memories,
             proposeHabits = { flags.isEnabled(Flag.MEMORY) },
             audit = audit,
@@ -213,9 +216,10 @@ class AppContainer(context: Context) : AppServices {
         )
     }
 
-    override fun wipeLocalStorage(): Boolean =
-        runCatching { scheduler.cancelEverything(); deviceSettings.reset(); com.equisteg.mydaycompanion.widget.TodayWidgetProvider.clear(appContext) }.isSuccess and
+    override fun wipeLocalStorage(): Boolean = com.equisteg.mydaycompanion.widget.TodayWidgetProvider.whileWiping(appContext) {
+        runCatching { scheduler.cancelEverything(); deviceSettings.reset() }.isSuccess and
             LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+    }
 
     override fun refreshWidget() = com.equisteg.mydaycompanion.widget.TodayWidgetProvider.refresh(appContext)
 

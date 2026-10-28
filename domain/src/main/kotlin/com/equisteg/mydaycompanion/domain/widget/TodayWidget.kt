@@ -16,7 +16,7 @@ data class WidgetSummary(val headline: String, val lines: List<WidgetLine>)
  *
  * The widget is outside the app lock, so by default it shows times and kinds only ("Task",
  * "Event"); names appear only when the owner turns on [showTitles]. A personal task never shows
- * its name, whatever the setting.
+ * its name, whatever the setting, and neither does a task whose row can't be read.
  */
 object TodayWidget {
     const val MAX_LINES = 3
@@ -29,12 +29,15 @@ object TodayWidget {
             .sortedBy { it.start }
         if (upcoming.isEmpty()) return WidgetSummary("Nothing else planned today", emptyList())
         val lines = upcoming.take(MAX_LINES).map { block ->
-            val personal = block.kind == BlockKind.TASK && byId[block.refId]?.personal == true
-            val text = when {
-                personal -> "Personal task"
-                showTitles -> block.title
-                block.kind == BlockKind.FIXED_EVENT -> "Event"
-                else -> "Task"
+            val task = if (block.kind == BlockKind.TASK) byId[block.refId] else null
+            val text = when (block.kind) {
+                BlockKind.FIXED_EVENT -> if (showTitles) block.title else "Event"
+                // Fails closed: a task row that can't be read shows no name.
+                BlockKind.TASK -> when {
+                    task?.personal == true -> "Personal task"
+                    showTitles && task != null -> block.title
+                    else -> "Task"
+                }
             }
             WidgetLine(block.start, text)
         }
