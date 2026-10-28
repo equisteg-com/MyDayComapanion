@@ -29,7 +29,7 @@
 | audit_log | time, actor, action id, risk, decision, outcome, reason code, non-personal detail | Operational | Orchestrator | 180 days by default; owner chooses 30 / 90 / 180 / 365 on History; removed nightly (`history.prune`) | Yes | Yes |
 | preferences | day start/end, buffer, speech output | Low | User | Until user deletes | Yes | Yes |
 | Backup file (`.mdcbackup`, outside the app) | everything in the rows above, plus security settings and challenge-question hashes; not the database key | Personal / Sensitive | Owner (Settings → Back up) | Where the owner saved it (Storage Access Framework); the app keeps no copy | — | Owner deletes the file |
-| device_settings (SharedPreferences) | calendar, Gemini Nano and lock-screen switches, History retention, wrong-backup-passphrase count and lock time | Low | User / app | Life of install; the restore lock survives "Delete everything" | No | Uninstall |
+| device_settings (SharedPreferences) | calendar, Gemini Nano, lock-screen and widget-name switches, History retention, wrong-backup-passphrase count and lock time | Low | User / app | Life of install; the restore lock survives "Delete everything" | No | Uninstall |
 | db.key.v1.enc | wrapped DB passphrase | Secret | App | Life of install | No (useless off-device) | Removed with app data |
 | Keystore key | AES-256 wrapping key | Secret | AndroidKeyStore | Life of install | Never extractable | Removed on uninstall |
 
@@ -44,7 +44,10 @@ Voice audio (Phase 1) is never stored; only the recognised text enters the pipel
    the header is authenticated. A backup is untrusted input when restored: files over 20 MB, unknown fields, unknown
    versions, weaker key settings, rule-like titles or memories and broken references are refused whole. Ten wrong
    passphrases close Restore for an hour. There is no recovery without the passphrase.
-5. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
+5. Home-screen widget (F19): shows today's remaining times and "Task" / "Event" outside the app lock; names only if
+   the owner turns them on; a personal task never shows its name; cleared by "Delete everything". The launcher keeps
+   only the last drawn view, never the database.
+6. Calendar (Phase 1): read on demand for the plan day; only events the user plans are stored.
 
 ## Network
 

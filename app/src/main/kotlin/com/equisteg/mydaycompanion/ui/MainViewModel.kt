@@ -123,6 +123,8 @@ data class UiState(
     /** "Show reminder text on the lock screen" (off by default). */
     val lockScreenText: Boolean = false,
     val backupPrompt: BackupPrompt? = null,
+    /** "Show names on the home-screen widget" (off by default). */
+    val widgetTitles: Boolean = false,
 ) {
     val proposedMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.PROPOSED }
     val keptMemories: List<MemoryItem> get() = memories.filter { it.status == MemoryStatus.ACTIVE }
@@ -186,6 +188,7 @@ class MainViewModel(
                     smartModel = services.deviceSettings.smartModel,
                     historyKeepDays = services.deviceSettings.historyKeepDays,
                     lockScreenText = services.deviceSettings.lockScreenText,
+                    widgetTitles = services.deviceSettings.widgetTitles,
                 )
             }
             // ML Kit is not touched at all while the flag or the owner's switch is off.
@@ -290,6 +293,13 @@ class MainViewModel(
     fun onLockScreenText(show: Boolean) {
         services.deviceSettings.lockScreenText = show
         _state.update { it.copy(lockScreenText = show) }
+    }
+
+    /** The home-screen widget shows names only when the owner allows it; it redraws at once either way. */
+    fun onWidgetTitles(show: Boolean) {
+        services.deviceSettings.widgetTitles = show
+        _state.update { it.copy(widgetTitles = show) }
+        services.refreshWidget()
     }
 
     fun onInputChange(text: String) = _state.update { it.copy(input = text, message = null) }
@@ -968,6 +978,7 @@ class MainViewModel(
         if (r !is ExecutionResult.Done) _state.update { it.copy(message = describe(r)) }
         // A changed plan changes when reminders fire. "Feature off" or "no permission" is fine here.
         services.maintenance.syncReminders()
+        services.refreshWidget()
     }
 
     private fun launchBusy(block: suspend () -> Unit) {

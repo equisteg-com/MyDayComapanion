@@ -101,6 +101,9 @@ interface AppServices {
 
     /** Closes and deletes the database files and destroys their key (build doc §8.4). The app must restart afterwards. */
     fun wipeLocalStorage(): Boolean
+
+    /** Asks the home-screen widget to read today again (F19). */
+    fun refreshWidget() {}
 }
 
 /** Small owner switches that are not part of the encrypted data (they hold no personal content). */
@@ -116,6 +119,9 @@ interface DeviceSettings {
     /** Show what a reminder is for on the secure lock screen. Off by default (build doc §11). */
     var lockScreenText: Boolean
 
+    /** Show task and event names on the home-screen widget (F19). Off by default: the widget is outside the app lock. */
+    var widgetTitles: Boolean
+
     /**
      * Wrong backup passphrases in a row, and until when Restore stays closed after ten of them
      * (build doc §7.3). Not part of [reset]: wiping the phone doesn't reopen guessing.
@@ -129,6 +135,7 @@ interface DeviceSettings {
         smartModel = true
         historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         lockScreenText = false
+        widgetTitles = false
     }
 }
 
@@ -148,6 +155,9 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var lockScreenText: Boolean
         get() = prefs.getBoolean("lock_screen_text", false)
         set(value) = prefs.edit().putBoolean("lock_screen_text", value).apply()
+    override var widgetTitles: Boolean
+        get() = prefs.getBoolean("widget_titles", false)
+        set(value) = prefs.edit().putBoolean("widget_titles", value).apply()
     override var restoreFailures: Int
         get() = prefs.getInt("restore_failures", 0)
         set(value) { prefs.edit().putInt("restore_failures", value).commit() }
@@ -195,7 +205,10 @@ class AppContainer(context: Context) : AppServices {
         DailyMaintenance(
             orchestrator, tasks, plans, routines, clock,
             remindersReady = { flags.isEnabled(Flag.REMINDERS) && permissionChecker.isGranted(SyncRemindersTool.POST_NOTIFICATIONS) },
-            afterRun = { scheduler.scheduleMaintenance() },
+            afterRun = {
+                scheduler.scheduleMaintenance()
+                refreshWidget()
+            },
             memories = memories,
             proposeHabits = { flags.isEnabled(Flag.MEMORY) },
             audit = audit,
@@ -203,8 +216,12 @@ class AppContainer(context: Context) : AppServices {
         )
     }
 
-    override fun wipeLocalStorage(): Boolean =
-        runCatching { scheduler.cancelEverything(); deviceSettings.reset() }.isSuccess and LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+    override fun wipeLocalStorage(): Boolean = com.equisteg.mydaycompanion.widget.TodayWidgetProvider.whileWiping(appContext) {
+        runCatching { scheduler.cancelEverything(); deviceSettings.reset() }.isSuccess and
+            LocalStorageWiper(appContext, keys) { if (dbHolder.isInitialized()) dbHolder.value else null }.wipe()
+    }
+
+    override fun refreshWidget() = com.equisteg.mydaycompanion.widget.TodayWidgetProvider.refresh(appContext)
 
     override val orchestrator: AgentOrchestrator by lazy {
         val ids = IdGenerator.RANDOM
