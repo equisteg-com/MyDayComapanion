@@ -12,7 +12,6 @@ import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.remember
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
@@ -83,10 +82,11 @@ class MainActivity : FragmentActivity() {
             }
         }
 
+        // Only the look is collected for the theme, so typing doesn't rebuild it.
+        val lookFlow = viewModel.state.map { it.themeMode to it.dynamicColor }.distinctUntilChanged()
+        val firstLook = viewModel.state.value.let { it.themeMode to it.dynamicColor }
         setContent {
-            // Only the look is collected here, so typing doesn't rebuild the theme.
-            val look by remember { viewModel.state.map { it.themeMode to it.dynamicColor }.distinctUntilChanged() }
-                .collectAsStateWithLifecycle(viewModel.state.value.themeMode to viewModel.state.value.dynamicColor)
+            val look by lookFlow.collectAsStateWithLifecycle(firstLook)
             val dark = when (look.first) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false

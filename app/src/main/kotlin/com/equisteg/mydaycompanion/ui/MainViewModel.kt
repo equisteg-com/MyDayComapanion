@@ -820,6 +820,8 @@ class MainViewModel(
     }
 
     fun onAppForeground() {
+        // The ticker counts uptime, so catch up at once after the phone slept.
+        _minute.value = nowTime()
         val since = backgroundedAt ?: return
         backgroundedAt = null
         val settings = _state.value.security
