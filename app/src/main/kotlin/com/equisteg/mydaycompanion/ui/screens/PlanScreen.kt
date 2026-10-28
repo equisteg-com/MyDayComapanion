@@ -6,7 +6,9 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -40,7 +42,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
 import com.equisteg.mydaycompanion.domain.insights.DayInsights
+import com.equisteg.mydaycompanion.domain.model.BlockKind
+import com.equisteg.mydaycompanion.domain.tools.RollOverTasksTool
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import java.time.format.DateTimeFormatter
 
@@ -62,6 +67,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val isToday = state.selectedDate == today
     val insights = remember(tasks, today) { DayInsights.of(tasks, today) }
     val dayCount = remember(tasks, state.selectedDate) { DayInsights.of(tasks, state.selectedDate).today }
+    val leftOver = remember(tasks, today) {
+        tasks.count { RollOverTasksTool.movable(it, today) && it.date!! >= today.minusDays(MainViewModel.ROLL_OVER_DAYS) }
+    }
     // Keeps the last proposal on screen while its card animates away.
     var shownProposal by remember { mutableStateOf(state.proposal) }
     if (state.proposal != null) shownProposal = state.proposal
@@ -105,6 +113,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             ) {
                 Column(Modifier.padding(16.dp).animateContentSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("What do you need to do?", style = MaterialTheme.typography.titleMedium)
+                    ChatBubbles(state.chat)
                     OutlinedTextField(
                         value = state.input,
                         onValueChange = viewModel::onInputChange,
@@ -113,13 +122,18 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         minLines = 2,
                         shape = MaterialTheme.shapes.medium,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Button(
                             onClick = viewModel::onSubmit,
                             enabled = !state.busy && state.input.isNotBlank(),
                             modifier = Modifier.testTag("submit"),
                         ) { Text("Plan it") }
                         if (viewModel.voiceEnabled) VoiceInputButton(enabled = !state.busy, onText = viewModel::onVoiceText, onMessage = viewModel::onInfo)
+                        QuickAsks(enabled = !state.busy, onAsk = viewModel::onAsk)
                     }
                     state.message?.let {
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer) {
@@ -128,6 +142,15 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     }
                 }
             }
+        }
+
+        state.focus?.let { focus -> item { FocusCard(focus, viewModel::onStopFocus) } }
+        state.suggestion?.let { suggestion ->
+            item { SuggestionCard(suggestion, state.busy, viewModel::onAcceptSuggestion, viewModel::onDismissSuggestion) }
+        }
+        state.choice?.let { choice -> item { ChoiceCard(choice, viewModel::onChoose, viewModel::onDismissSuggestion) } }
+        if (isToday && leftOver > 0 && state.suggestion == null) {
+            item { RollOverBanner(leftOver, state.busy, viewModel::onRollOver) }
         }
 
         if (shownProposal != null) item {
@@ -163,7 +186,16 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
 
         item {
-            DayHero(dayCount, if (isToday) DayInsights.nowNext(plan, tasks, now) else null)
+            val nowNext = if (isToday) DayInsights.nowNext(plan, tasks, now) else null
+            DayHero(dayCount, nowNext)
+            val nowTask = nowNext?.now?.takeIf { it.kind == BlockKind.TASK }
+            if (nowTask != null && state.focus == null) {
+                AssistChip(
+                    onClick = { viewModel.onStartFocus(AgentCommandParser.DEFAULT_FOCUS_MINUTES, nowTask.refId) },
+                    label = { Text("Focus ${AgentCommandParser.DEFAULT_FOCUS_MINUTES} min on \"${nowTask.title}\"") },
+                    modifier = Modifier.padding(top = 8.dp).testTag("focus-now"),
+                )
+            }
         }
 
         item {

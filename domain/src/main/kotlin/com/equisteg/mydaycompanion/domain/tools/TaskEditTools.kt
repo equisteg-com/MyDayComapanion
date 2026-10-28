@@ -280,3 +280,64 @@ class UpdateSettingsTool(private val preferences: PreferencesStore) : AgentTool 
         }
     }
 }
+
+/**
+ * tasks.rollOver — moves unfinished tasks from earlier days to [to] (UPD-011). The exact tasks are
+ * listed in the arguments, so the approval covers exactly what the owner saw; subtasks follow
+ * their parent and a deadline keeps its time on the new day. Routine tasks are never moved (the
+ * routine adds them again on their own day). Args: {"to":"YYYY-MM-DD","taskIds":"id1,id2,…"}
+ */
+class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Clock) : AgentTool {
+    override val spec = ToolSpec(
+        id = "tasks.rollOver",
+        description = "Move unfinished tasks from earlier days to a new day.",
+        riskLevel = RiskLevel.L2,
+        agentProposable = true,
+        confirmation = Confirmation.WHEN_PROPOSED_BY_AGENT,
+        verification = "Re-read every listed task and check it is on the new day.",
+    )
+
+    private fun parse(args: JsonObject): Pair<LocalDate, List<String>>? {
+        if (!args.onlyKeys("to", "taskIds")) return null
+        val to = parseDate(args.string("to")) ?: return null
+        val ids = args.string("taskIds")?.split(',')?.map { it.trim() } ?: return null
+        if (ids.isEmpty() || ids.size > MAX_TASKS || ids.any { !ID.matches(it) } || ids.toSet().size != ids.size) return null
+        return to to ids
+    }
+
+    override fun validate(args: JsonObject): ArgsValidation = if (parse(args) != null) ArgsValidation.Ok else ArgsValidation.Rejected("rollOver")
+
+    override suspend fun execute(args: JsonObject): ToolOutcome {
+        val (to, ids) = parse(args) ?: return ToolOutcome.Failure("INVALID")
+        val now = clock.instant()
+        val all = tasks.all()
+        val roots = ids.map { id -> all.firstOrNull { it.id == id } ?: return ToolOutcome.Failure("NOT_FOUND") }
+        if (roots.any { !movable(it, to) }) return ToolOutcome.Failure("NOT_MOVABLE")
+        val moved = roots.flatMap { root ->
+            listOf(root) + all.filter { it.parentId == root.id }
+        }.map { t -> t.copy(date = to, deadline = t.deadline?.let { to.atTime(it.toLocalTime()) }, updatedAt = now) }
+        tasks.upsert(moved)
+        return ToolOutcome.Success("moved tasks=${roots.size} subtasks=${moved.size - roots.size}")
+    }
+
+    override suspend fun verify(args: JsonObject, outcome: ToolOutcome.Success): Boolean {
+        val (to, ids) = parse(args) ?: return false
+        return ids.all { tasks.get(it)?.date == to }
+    }
+
+    override suspend fun touchesPersonal(args: JsonObject): Boolean =
+        parse(args)?.second?.any { tasks.get(it)?.personal == true } == true
+
+    companion object {
+        const val MAX_TASKS = 50
+        private val ID = Regex("[A-Za-z0-9_:-]{1,64}")
+
+        /** An open, top-level, non-routine task planned before [to]. */
+        fun movable(task: Task, to: LocalDate): Boolean =
+            task.status == TaskStatus.OPEN && task.parentId == null && task.routineId == null && task.date != null && task.date < to
+
+        fun args(to: LocalDate, tasks: List<Task>) = JsonObject(
+            mapOf("to" to JsonPrimitive(to.toString()), "taskIds" to JsonPrimitive(tasks.joinToString(",") { it.id })),
+        )
+    }
+}
