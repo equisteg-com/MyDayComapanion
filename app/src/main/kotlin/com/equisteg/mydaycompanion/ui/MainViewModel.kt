@@ -191,7 +191,15 @@ class MainViewModel(
 
     /** The owner typed something for the agent to remember. Private ones are never given to the model. */
     fun onAddMemory(content: String, private: Boolean) = launchBusy {
-        val r = services.orchestrator.execute(ProposedAction("memory.add", AddMemoryTool.args(content, private)), Requester.USER)
+        val action = ProposedAction("memory.add", AddMemoryTool.args(content, private))
+        val r = services.orchestrator.execute(action, Requester.USER)
+        if (r is ExecutionResult.NeedsConfirmation) {
+            // Re-typing a private memory replaces it, so the owner's chosen verification comes first.
+            val s = _state.value
+            val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
+            advance(PendingConfirmation(action, r.actionFingerprint, "Replace a private memory?", "Your private memory with the same words is replaced by this one.", steps))
+            return@launchBusy
+        }
         _state.update {
             it.copy(
                 message = when (r) {

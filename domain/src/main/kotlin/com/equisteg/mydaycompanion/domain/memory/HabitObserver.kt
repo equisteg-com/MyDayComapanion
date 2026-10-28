@@ -49,7 +49,7 @@ class HabitObserver(
                 Habit("You usually do \"$title\" around ${LocalTime.of(rounded / 60, rounded % 60)}", (perDay.size / 5.0).coerceAtMost(1.0))
             }
             // Already known (kept, proposed or turned down), or something the memory rules would refuse.
-            .filter { h -> existing.none { it.sameAs(h.content) } && policy.admit(candidate(h, now)) is MemoryDecision.Accepted }
+            .filter { h -> existing.none { it.coversHabit(h.content) } && policy.admit(candidate(h, now)) is MemoryDecision.Accepted }
             .sortedByDescending { it.confidence }
             .take(maxProposalsPerRun)
     }

@@ -86,6 +86,19 @@ class MemoryHistoryUiTest {
     }
 
     @Test
+    fun `re-typing a private memory asks for verification instead of replacing it`() {
+        val vm = MainViewModel(services, Dispatchers.Unconfined)
+        compose.setContent { AppNavigation(vm) }
+        compose.onNodeWithTag("nav-MEMORY").performClick()
+        vm.onAddMemory("Therapy on Tuesdays", true)
+        compose.waitUntil(5_000) { runBlocking { graph.memories.count() } == 1 }
+        vm.onAddMemory("therapy on tuesdays", false)
+        compose.waitUntil(5_000) { vm.state.value.pending != null }
+        assertEquals("memory.add", vm.state.value.pending!!.action.toolId)
+        assertEquals(MemorySensitivity.SENSITIVE, runBlocking { graph.memories.all() }.single().sensitivity, "unchanged until verified")
+    }
+
+    @Test
     fun `a rule-like memory is refused with a reason`() {
         val vm = MainViewModel(services, Dispatchers.Unconfined)
         compose.setContent { AppNavigation(vm) }

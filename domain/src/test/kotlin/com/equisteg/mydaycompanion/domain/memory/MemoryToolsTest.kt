@@ -132,6 +132,14 @@ class MemoryToolsTest {
     }
 
     @Test
+    fun `the owner's memories that differ only in time are both kept`() = runTest {
+        val g = TestGraph()
+        g.run("memory.add", AddMemoryTool.args("Call mom around 09:00", false))
+        g.run("memory.add", AddMemoryTool.args("Call mom around 18:00", false))
+        assertEquals(2, g.memories.all().count { it.status == MemoryStatus.ACTIVE })
+    }
+
+    @Test
     fun `History never holds what a memory says`() = runTest {
         val g = TestGraph()
         g.propose("Prefers the gym before 8")

@@ -11,6 +11,7 @@ import com.equisteg.mydaycompanion.domain.memory.MemoryStore
 import com.equisteg.mydaycompanion.domain.memory.MemoryType
 import com.equisteg.mydaycompanion.domain.memory.Retention
 import com.equisteg.mydaycompanion.domain.memory.rejectedMarker
+import com.equisteg.mydaycompanion.domain.memory.coversHabit
 import com.equisteg.mydaycompanion.domain.memory.sameAs
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -50,7 +51,7 @@ class ProposeMemoryTool(
 
     override suspend fun execute(args: JsonObject): ToolOutcome {
         val type = MemoryType.valueOf(args.string("type")!!)
-        if (store.all().any { it.sameAs(args.string("content")!!) }) return ToolOutcome.Failure("ALREADY_KNOWN")
+        if (store.all().any { it.coversHabit(args.string("content")!!) }) return ToolOutcome.Failure("ALREADY_KNOWN")
         val item = (policy.admit(candidate(args, ids.newId(), type)) as? MemoryDecision.Accepted)?.item ?: return ToolOutcome.Failure("REJECTED")
         store.upsert(item)
         return ToolOutcome.Success("memory proposed", mapOf("memoryId" to item.id))
