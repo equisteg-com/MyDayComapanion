@@ -131,6 +131,8 @@ class AgentChatUiTest {
         runBlocking { graph.security.saveSettings(SecuritySettings(appLockEnabled = true, lockAfterMinutes = 0)) }
         val vm = MainViewModel(services, Dispatchers.Unconfined)
         idle()
+        assertTrue(vm.state.value.locked, "opens locked")
+        vm.onUnlockRequested()
         assertNotNull(vm.state.value.authRequest, "unlock prompt")
         vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
         idle()
