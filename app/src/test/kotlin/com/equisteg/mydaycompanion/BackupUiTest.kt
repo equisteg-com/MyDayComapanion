@@ -1,13 +1,11 @@
 package com.equisteg.mydaycompanion
 
 import android.net.Uri
-import androidx.activity.ComponentActivity
+import android.os.Looper
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import com.equisteg.mydaycompanion.domain.agent.ExecutionResult
 import com.equisteg.mydaycompanion.domain.agent.ProposedAction
@@ -17,31 +15,41 @@ import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
 import com.equisteg.mydaycompanion.domain.testing.TestGraph
 import com.equisteg.mydaycompanion.domain.tools.CreateBackupTool
-import com.equisteg.mydaycompanion.navigation.AppNavigation
 import com.equisteg.mydaycompanion.ui.AuthOutcome
+import com.equisteg.mydaycompanion.ui.BackupPrompt
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.UiState
+import com.equisteg.mydaycompanion.ui.screens.BackupPassphraseForm
+import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import java.time.LocalDate
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/**
+ * The passphrase form and the onboarding button are rendered on their own, like ChallengeForm:
+ * Robolectric can't lay out a FLAG_SECURE dialog window (it re-measures it forever). The backup
+ * and restore flows are driven through the view model, which the dialog only forwards to.
+ */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp")
 class BackupUiTest {
     @get:Rule
-    val compose = createAndroidComposeRule<ComponentActivity>()
+    val compose = createComposeRule()
 
     private val passphrase = "correct horse battery"
     private val picked = Uri.parse("content://test/mydaycompanion-20261006.mdcbackup")
 
-    private fun has(tag: String) = compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
+    private fun idle() = shadowOf(Looper.getMainLooper()).idle()
 
     /** A backup made on "the old phone", through the same approved tool the app uses. */
     private fun oldPhoneBackup(): ByteArray = runBlocking {
@@ -56,10 +64,28 @@ class BackupUiTest {
         old.exportTargets.written.getValue("file")
     }
 
-    private fun typePassphrase(text: String) {
-        compose.onNodeWithTag("backup-passphrase").performTextClearance()
-        compose.onNodeWithTag("backup-passphrase").performTextInput(text)
+    @Test
+    fun `the passphrase form shows strength and hands over both passphrases`() {
+        var sent: Pair<String, String>? = null
+        compose.setContent {
+            BackupPassphraseForm(BackupPrompt(BackupPrompt.Kind.CREATE, "The two passphrases don't match."), busy = false, onCreate = { a, b -> sent = String(a) to String(b) }, onRestore = {}, onCancel = {})
+        }
+        compose.onNodeWithTag("backup-error").assertTextContains("don't match", substring = true)
+        compose.onNodeWithTag("backup-passphrase").performTextInput("short")
+        compose.onNodeWithTag("backup-strength").assertTextContains("Too short", substring = true)
+        compose.onNodeWithTag("backup-passphrase").performTextInput(" horse battery staple")
+        compose.onNodeWithTag("backup-strength").assertTextContains("Strong", substring = true)
+        compose.onNodeWithTag("backup-passphrase-repeat").performTextInput("short horse battery staple")
         compose.onNodeWithTag("backup-passphrase-submit").performClick()
+        assertEquals("short horse battery staple" to "short horse battery staple", sent)
+    }
+
+    @Test
+    fun `first-run setup offers Restore from backup`() {
+        var asked = false
+        compose.setContent { OnboardingScreen(UiState(selectedDate = LocalDate.of(2026, 10, 6)), {}, {}, onRestoreFromBackup = { asked = true }) }
+        compose.onNodeWithTag("onboarding-restore").performClick()
+        assertTrue(asked)
     }
 
     @Test
@@ -67,25 +93,33 @@ class BackupUiTest {
         val graph = TestGraph()
         val services = TestServices(graph, onboarded = false).apply { backupFile = oldPhoneBackup() }
         val vm = MainViewModel(services, Dispatchers.Unconfined)
-        compose.setContent { AppNavigation(vm) }
-        compose.waitUntil(5_000) { has("onboarding-restore") }
+        idle()
+        assertTrue(vm.state.value.showOnboarding)
 
         vm.onRestoreFileChosen(picked)
-        compose.waitUntil(5_000) { has("backup-passphrase") }
-        typePassphrase("wrong horse battery")
-        compose.waitUntil(10_000) { has("backup-error") }
-        compose.onNodeWithTag("backup-error").assertTextContains("9 tries left", substring = true)
+        idle()
+        assertEquals(BackupPrompt.Kind.RESTORE, vm.state.value.backupPrompt?.kind)
+        vm.onRestorePassphrase("wrong horse battery".toCharArray())
+        idle()
+        assertTrue(vm.state.value.backupPrompt?.error.orEmpty().contains("9 tries left"))
         assertEquals(1, services.deviceSettings.restoreFailures)
 
-        typePassphrase(passphrase)
-        compose.waitUntil(10_000) { has("confirm") }
+        vm.onRestorePassphrase(passphrase.toCharArray())
+        idle()
+        val pending = assertNotNull(vm.state.value.pending)
+        assertEquals("Replace everything with this backup?", pending.title)
+        assertTrue("2 tasks" in pending.body && "App lock: on" in pending.body, pending.body)
         assertEquals(0, runBlocking { graph.tasks.count() }, "nothing replaced before approval")
-        compose.onNodeWithTag("confirm").performClick()
-        compose.waitUntil(5_000) { vm.state.value.authRequest != null }
-        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
 
-        compose.waitUntil(10_000) { runBlocking { graph.tasks.count() } == 2 }
-        compose.waitUntil(5_000) { !has("onboarding") }
+        vm.onConfirmPending()
+        idle()
+        assertNotNull(vm.state.value.authRequest)
+        vm.onDeviceAuthResult(AuthOutcome.SUCCEEDED)
+        idle()
+
+        assertEquals(2, runBlocking { graph.tasks.count() })
+        assertTrue(!vm.state.value.showOnboarding, "setup closes with the restored settings")
+        assertTrue(vm.state.value.message.orEmpty().startsWith("Restored."))
         assertEquals(0, services.deviceSettings.restoreFailures)
         val history = graph.audit.entries.joinToString { "${it.action} ${it.reasonCode} ${it.detail}" }
         assertTrue("backup.restore" in history)
@@ -98,43 +132,38 @@ class BackupUiTest {
         val services = TestServices(graph).apply { backupFile = oldPhoneBackup() }
         services.deviceSettings.restoreFailures = 9
         val vm = MainViewModel(services, Dispatchers.Unconfined)
-        compose.setContent { AppNavigation(vm) }
+        idle()
 
         vm.onRestoreFileChosen(picked)
-        compose.waitUntil(5_000) { has("backup-passphrase") }
-        typePassphrase("wrong horse battery")
-        compose.waitUntil(10_000) { vm.state.value.backupPrompt == null }
+        idle()
+        vm.onRestorePassphrase("wrong horse battery".toCharArray())
+        idle()
+        assertNull(vm.state.value.backupPrompt)
         assertTrue(vm.state.value.message.orEmpty().startsWith("Too many wrong passphrases"))
         assertTrue(services.deviceSettings.restoreLockedUntilMillis > graph.clock.millis())
 
         vm.onRestoreFileChosen(picked)
-        compose.waitUntil(5_000) { !vm.state.value.busy }
+        idle()
         assertNull(vm.state.value.backupPrompt, "no new tries while locked")
         assertEquals(0, runBlocking { graph.tasks.count() })
     }
 
     @Test
     fun `a new backup's passphrase must be long enough and typed twice the same`() {
-        val services = TestServices(TestGraph())
-        val vm = MainViewModel(services, Dispatchers.Unconfined)
-        compose.setContent { AppNavigation(vm) }
+        val vm = MainViewModel(TestServices(TestGraph()), Dispatchers.Unconfined)
+        idle()
         assertTrue(vm.backupFileName().matches(Regex("mydaycompanion-\\d{8}\\.mdcbackup")))
 
         vm.onBackupDestinationChosen(picked)
-        compose.waitUntil(5_000) { has("backup-passphrase") }
-        compose.onNodeWithTag("backup-passphrase").performTextInput("short")
-        compose.onNodeWithTag("backup-strength").assertTextContains("Too short", substring = true)
-        compose.onNodeWithTag("backup-passphrase-submit").performClick()
-        compose.waitUntil(5_000) { has("backup-error") }
-        compose.onNodeWithTag("backup-error").assertTextContains("at least 10", substring = true)
-
-        compose.onNodeWithTag("backup-passphrase").performTextInput("correct horse battery staple")
-        compose.onNodeWithTag("backup-strength").assertTextContains("Strong", substring = true)
-        compose.onNodeWithTag("backup-passphrase-repeat").performTextInput("correct horse battery stable")
-        compose.onNodeWithTag("backup-passphrase-submit").performClick()
-        compose.waitUntil(5_000) { vm.state.value.backupPrompt?.error?.contains("don't match") == true }
+        assertEquals(BackupPrompt.Kind.CREATE, vm.state.value.backupPrompt?.kind)
+        vm.onBackupPassphrase("short".toCharArray(), "short".toCharArray())
+        idle()
+        assertTrue(vm.state.value.backupPrompt?.error.orEmpty().contains("at least 10"))
+        vm.onBackupPassphrase("correct horse battery staple".toCharArray(), "correct horse battery stable".toCharArray())
+        idle()
+        assertTrue(vm.state.value.backupPrompt?.error.orEmpty().contains("don't match"))
 
         vm.onCancelBackupPrompt()
-        compose.waitUntil(5_000) { !has("backup-passphrase") }
+        assertNull(vm.state.value.backupPrompt)
     }
 }

@@ -38,9 +38,6 @@ android {
 
     testOptions {
         unitTests.isIncludeAndroidResources = true
-        // One JVM per test class: Robolectric keeps native text objects in a process-wide registry,
-        // so a long UI test class can corrupt it for every class that runs after it.
-        unitTests.all { it.forkEvery = 1 }
     }
 
     lint {
