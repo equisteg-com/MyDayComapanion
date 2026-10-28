@@ -35,12 +35,12 @@ import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.screens.BackupPassphraseDialog
 import com.equisteg.mydaycompanion.ui.screens.ChallengeDialog
 import com.equisteg.mydaycompanion.ui.screens.HistoryScreen
-import com.equisteg.mydaycompanion.ui.screens.SecureWindow
 import com.equisteg.mydaycompanion.ui.screens.LockScreen
 import com.equisteg.mydaycompanion.ui.screens.MemoryScreen
 import com.equisteg.mydaycompanion.ui.screens.OnboardingScreen
 import com.equisteg.mydaycompanion.ui.screens.PlanScreen
 import com.equisteg.mydaycompanion.ui.screens.RoutinesScreen
+import com.equisteg.mydaycompanion.ui.screens.SecureWindow
 import com.equisteg.mydaycompanion.ui.screens.SettingsScreen
 
 enum class Destination(val label: String, val icon: ImageVector) {
@@ -58,6 +58,8 @@ fun AppNavigation(viewModel: MainViewModel) {
 
     // OQ-26: with the app lock on, nothing in the app shows in recent apps or in screenshots.
     // Set before the app goes to the background, which is when the preview is taken.
+    // Dialogs inherit the flag, and Robolectric can't lay out a secure dialog window: UI tests that
+    // open a dialog keep the app lock off (see BackupUiTest).
     if (state.security.appLockEnabled) SecureWindow()
 
     if (state.locked) {
