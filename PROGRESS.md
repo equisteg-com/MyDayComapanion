@@ -1,5 +1,22 @@
 # Progress
 
+## 2026-11-02 — Voice and planning fixes (UPD-014)
+
+- Why voice "didn't work": the mic used only Android's on-device recogniser, which most non-Pixel phones (including
+  the founder's iQOO Z5) don't have, so the button was disabled. Now the phone's own speech service is used when
+  there is no on-device recogniser (prefer offline; Settings switch, OQ-28). Recogniser quirks of real phones are
+  handled (busy, error after results, empty results, missing on-device language pack).
+- Text-to-speech rebuilt (`voice/VoiceOutput.kt`): reused engine, 8 s start-up, English fallback, audio focus,
+  a speaking state. "Speak replies" now reads every answer and plan, not only "Added to your day".
+- Talk (voice-to-voice), modelled on other assistants' voice modes: listen → answer aloud → listen; plans read back
+  with times and added on a whole-utterance "yes" (fixed rules, `VoiceIntents`) or the Add tap; "stop" ends it.
+- Planning from speech: 20 spoken sentences were run through the planner; 9 problems found and fixed (extractor v4,
+  planner v4). Golden evaluation 88/88 (13 new spoken cases); 166 domain tests pass locally.
+- Tests: `VoiceUiTest` (13), `SpeechInputTest` (7, real `SpeechRecognizer` under Robolectric), `VoiceTest` (9);
+  test cases TC-M-191..205.
+- NEEDS HUMAN: try Talk and the dictation mic on the iQOO Z5 (install over USB as before) and confirm the
+  speech-service choice (OQ-28).
+
 ## 2026-10-28 — Test builds install over each other (CHG-002)
 
 - The founder's phone refused the latest debug APK. Each CI run made a new debug signing key, and Android won't
