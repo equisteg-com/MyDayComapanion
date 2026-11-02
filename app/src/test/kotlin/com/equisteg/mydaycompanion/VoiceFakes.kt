@@ -19,7 +19,10 @@ class FakeSpeechInput : SpeechInput {
 
     val listening: Boolean get() = listener != null
 
+    var phoneService = false
+
     override fun engine() = engine
+    override fun phoneServiceInstalled() = phoneService
 
     override fun start(listener: SpeechInput.Listener) {
         if (engine == SpeechEngine.NONE) return listener.onError(SpeechError.UNAVAILABLE)

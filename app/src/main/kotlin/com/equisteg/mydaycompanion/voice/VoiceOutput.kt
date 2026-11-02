@@ -79,10 +79,15 @@ class AndroidSpeaker(context: Context) : Speaker, VoiceOutput {
     }
 
     override fun stop() {
-        main.post {
-            tts?.stop()
-            finished()
-        }
+        // At once when called on the main thread, so a reply queued right after it is not cut off.
+        if (Looper.myLooper() == Looper.getMainLooper()) return stopNow()
+        val id = latestId()
+        main.post { if (id == latestId()) stopNow() }
+    }
+
+    private fun stopNow() {
+        tts?.stop()
+        finished()
     }
 
     override suspend fun status(): TtsStatus = withContext(Dispatchers.Main) {

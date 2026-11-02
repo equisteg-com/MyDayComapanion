@@ -228,4 +228,37 @@ class VoiceUiTest {
         assertFalse("clinic" in audit.lowercase(), "spoken text is never audited")
         assertTrue(runBlocking { graph.audit.all() }.any { it.action == "voice.speak" })
     }
+
+    @Test
+    fun `personal task titles are never read out`() {
+        runBlocking {
+            graph.tasks.upsert(
+                listOf(
+                    com.equisteg.mydaycompanion.domain.model.Task(
+                        "p1", "Therapy", com.equisteg.mydaycompanion.domain.model.Priority.MEDIUM, 60, tomorrow.minusDays(1),
+                        personal = true, createdAt = graph.clock.instant(),
+                    ),
+                ),
+            )
+        }
+        viewModel.onReadAloud("Next: Therapy at 4 PM.")
+        waitFor("spoken") { spoken.isNotEmpty() }
+        assertEquals("Next: a personal task at 4 PM.", spoken.single())
+    }
+
+    @Test
+    fun `a phone that only has its own speech service asks once, then listens`() {
+        services.deviceSettings.phoneSpeechService = false
+        mic.engine = SpeechEngine.NONE
+        mic.phoneService = true
+        compose.setContent { AppNavigation(viewModel) }
+        compose.onNodeWithTag("talk").performScrollTo().performClick()
+        waitFor("asked") { viewModel.state.value.askPhoneSpeech != null }
+        assertEquals(0, mic.starts, "nothing listens before the owner agrees")
+        mic.engine = SpeechEngine.PHONE_SERVICE // what the phone reports once the switch is on
+        compose.onNodeWithTag("phone-speech-allow").performClick()
+        waitFor("listening") { mic.listening }
+        assertTrue(services.deviceSettings.phoneSpeechService)
+        assertNull(viewModel.state.value.askPhoneSpeech)
+    }
 }

@@ -97,4 +97,29 @@ class VoiceTest {
         assertEquals(listOf("meet Tom at 3 tomorrow"), ClauseSplitter.split("meet Tom at 3 tomorrow"), "a date after a time stays with its item")
         assertEquals(listOf("call mom at 5 for 10 minutes"), ClauseSplitter.split("call mom at 5 for 10 minutes"))
     }
+
+    @Test
+    fun `personal titles are never spoken`() {
+        val personal = listOf("Therapy", "Call Dr. Rao")
+        assertEquals("Next: a personal task at 4 PM.", SpokenReplies.redact("Next: Therapy at 4 PM.", personal))
+        assertEquals("Mark a personal task done?", SpokenReplies.redact("Mark \"call dr. rao\" done?", personal))
+        assertEquals("Therapyland trip", SpokenReplies.redact("Therapyland trip", personal), "only whole titles")
+        assertEquals("Buy milk", SpokenReplies.redact("Buy milk", emptyList()))
+    }
+
+    @Test
+    fun `a spoken yes can approve a plan, but never a personal or L3 action`() = runTest {
+        val g = TestGraph()
+        for (said in listOf("tomorrow I have a meeting at 10 a.m. then call mom", "every day at 7 am walk the dog", "plan my day: gym, email Sam, buy milk")) {
+            val p = g.orchestrator.propose(said)
+            assertIs<AgentProposal.Ready>(p)
+            assertFalse(p.actions.any { g.orchestrator.needsTapToApprove(it) }, said)
+        }
+        g.tasks.upsert(listOf(com.equisteg.mydaycompanion.domain.model.Task("p1", "Clinic results", com.equisteg.mydaycompanion.domain.model.Priority.MEDIUM, 30, today, personal = true, createdAt = g.clock.instant())))
+        val personal = com.equisteg.mydaycompanion.domain.agent.ProposedAction("tasks.complete", kotlinx.serialization.json.buildJsonObject { put("taskId", kotlinx.serialization.json.JsonPrimitive("p1")) })
+        assertTrue(g.orchestrator.needsTapToApprove(personal), "personal")
+        val export = com.equisteg.mydaycompanion.domain.agent.ProposedAction("data.deleteAll", kotlinx.serialization.json.buildJsonObject { })
+        assertTrue(g.orchestrator.needsTapToApprove(export), "L4")
+        assertTrue(g.orchestrator.needsTapToApprove(com.equisteg.mydaycompanion.domain.agent.ProposedAction("nope", kotlinx.serialization.json.buildJsonObject { })), "unknown")
+    }
 }

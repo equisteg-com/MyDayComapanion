@@ -24,7 +24,7 @@ import com.equisteg.mydaycompanion.voice.SpeechEngine
 @Composable
 fun VoiceSettings(state: UiState, viewModel: MainViewModel) {
     val context = LocalContext.current
-    val engine = viewModel.speechEngine()
+    val engine = state.speechEngine
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             when (engine) {

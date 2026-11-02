@@ -29,7 +29,10 @@ enum class SpeechError { NO_MATCH, NO_PERMISSION, BUSY, UNAVAILABLE, OTHER }
 interface SpeechInput {
     fun engine(): SpeechEngine
 
-    /** Starts listening; ignored while already listening. */
+    /** True when the phone has its own speech service (used only when the owner allows it). */
+    fun phoneServiceInstalled(): Boolean = false
+
+    /** Starts listening; a start while already listening begins a new session and drops the old one. */
     fun start(listener: Listener)
 
     /** Stops listening and delivers what was heard so far. */
@@ -85,9 +88,11 @@ class AndroidSpeechInput(
 
     override fun engine(): SpeechEngine = when {
         !onDeviceFailed && onDeviceAvailable() -> SpeechEngine.ON_DEVICE
-        phoneServiceAllowed() && SpeechRecognizer.isRecognitionAvailable(appContext) -> SpeechEngine.PHONE_SERVICE
+        phoneServiceAllowed() && phoneServiceInstalled() -> SpeechEngine.PHONE_SERVICE
         else -> SpeechEngine.NONE
     }
+
+    override fun phoneServiceInstalled(): Boolean = runCatching { SpeechRecognizer.isRecognitionAvailable(appContext) }.getOrDefault(false)
 
     override fun start(listener: SpeechInput.Listener) = start(listener, retried = false)
 
@@ -97,6 +102,7 @@ class AndroidSpeechInput(
         val r = recognizerFor(engine) ?: return listener.onError(SpeechError.UNAVAILABLE)
         val id = ++session
         var heard = false
+        var ready = false
         var finished = false
         fun finish(block: () -> Unit) {
             if (finished || id != session) return
@@ -105,7 +111,10 @@ class AndroidSpeechInput(
         }
         r.setRecognitionListener(
             object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) { if (id == session) listener.onReady() }
+                override fun onReadyForSpeech(params: Bundle?) {
+                    ready = true
+                    if (id == session) listener.onReady()
+                }
                 override fun onBeginningOfSpeech() { heard = true }
                 override fun onRmsChanged(rmsdB: Float) { if (id == session && !finished) listener.onLevel(((rmsdB + 2f) / 12f).coerceIn(0f, 1f)) }
                 override fun onBufferReceived(buffer: ByteArray?) = Unit
@@ -122,14 +131,19 @@ class AndroidSpeechInput(
                     if (finished || id != session) return
                     val languageProblem = error == ERROR_LANGUAGE_NOT_SUPPORTED || error == ERROR_LANGUAGE_UNAVAILABLE ||
                         error == ERROR_SERVER_DISCONNECTED || error == SpeechRecognizer.ERROR_SERVER
+                    // An on-device recogniser that is listed but can't bind or has no model fails before it is ready.
+                    val onDeviceBroken = !ready && error != SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS &&
+                        error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY && error != SpeechRecognizer.ERROR_NO_MATCH &&
+                        error != SpeechRecognizer.ERROR_SPEECH_TIMEOUT
                     when {
-                        // The on-device recogniser exists but can't do this language (yet): ask for the pack, use the phone service now.
-                        engine == SpeechEngine.ON_DEVICE && languageProblem && !heard -> {
+                        // The on-device recogniser can't do this (yet): ask for the pack, use the phone service now.
+                        engine == SpeechEngine.ON_DEVICE && (languageProblem || onDeviceBroken) && !heard -> {
                             finished = true
                             onDeviceFailed = true
-                            askForLanguagePack()
-                            // Not from inside the dying recogniser's own callback.
+                            if (languageProblem) askForLanguagePack()
+                            // Not from inside the dying recogniser's own callback, and not after a cancel.
                             main.post {
+                                if (id != session) return@post
                                 release()
                                 if (engine() != SpeechEngine.NONE) start(listener, retried = true) else listener.onError(SpeechError.UNAVAILABLE)
                             }
@@ -137,6 +151,7 @@ class AndroidSpeechInput(
                         error == SpeechRecognizer.ERROR_RECOGNIZER_BUSY && !retried -> {
                             finished = true
                             main.post {
+                                if (id != session) return@post
                                 release()
                                 start(listener, retried = true)
                             }
@@ -150,8 +165,8 @@ class AndroidSpeechInput(
         try {
             r.startListening(intent(engine))
         } catch (e: RuntimeException) {
-            release()
             finish { listener.onError(SpeechError.OTHER) }
+            release()
         }
     }
 
@@ -196,10 +211,11 @@ class AndroidSpeechInput(
     private fun askForLanguagePack() {
         if (downloadAsked || Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
         downloadAsked = true
+        // Kept alive for a while, so the request reaches the service before the recogniser is destroyed.
         runCatching {
             val r = SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
             r.triggerModelDownload(intent(SpeechEngine.ON_DEVICE))
-            r.destroy()
+            main.postDelayed({ runCatching { r.destroy() } }, DOWNLOAD_HOLD_MS)
         }
     }
 
@@ -225,6 +241,7 @@ class AndroidSpeechInput(
 
     private companion object {
         // Added in Android 12; spelled out so the app also compiles the mapping on older API levels.
+        const val DOWNLOAD_HOLD_MS = 30_000L
         const val ERROR_SERVER_DISCONNECTED = 11
         const val ERROR_LANGUAGE_NOT_SUPPORTED = 12
         const val ERROR_LANGUAGE_UNAVAILABLE = 13

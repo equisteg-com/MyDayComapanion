@@ -110,6 +110,18 @@ object SpokenReplies {
     }
 
     /**
+     * Replaces the titles of personal tasks in [text] with "a personal task", so a reply read out
+     * loud never says them (the same rule as Read my day, reminders and the widget).
+     */
+    fun redact(text: String, personalTitles: Collection<String>): String =
+        personalTitles.map(String::trim).filter(String::isNotEmpty).distinct().sortedByDescending { it.length }
+            .fold(text) { acc, title ->
+                acc.replace(Regex("[\"“”']?(?<![\\p{L}\\p{N}])" + Regex.escape(title) + "(?![\\p{L}\\p{N}])[\"“”']?", RegexOption.IGNORE_CASE), PERSONAL)
+            }
+
+    const val PERSONAL = "a personal task"
+
+    /**
      * Text made fit to be spoken: emoji and symbols dropped, whitespace tidied, and long text cut at
      * a sentence end so a reply never reads on for minutes.
      */

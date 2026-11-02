@@ -241,6 +241,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     }
 
     VoiceConversation(state, viewModel)
+    PhoneSpeechPrompt(state, viewModel)
 
     tasks.firstOrNull { it.id == editingId }?.let { task ->
         TaskEditDialog(

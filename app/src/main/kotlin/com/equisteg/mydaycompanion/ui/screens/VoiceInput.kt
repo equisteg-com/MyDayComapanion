@@ -58,7 +58,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 import com.equisteg.mydaycompanion.ui.MainViewModel
+import com.equisteg.mydaycompanion.ui.MicUse
 import com.equisteg.mydaycompanion.ui.UiState
 import com.equisteg.mydaycompanion.ui.VoicePhase
 import com.equisteg.mydaycompanion.voice.SpeechEngine
@@ -107,15 +110,14 @@ fun rememberMicGate(onMessage: (String) -> Unit, action: () -> Unit): () -> Unit
 /** The mic inside the input box: tap to dictate, tap again to stop. */
 @Composable
 fun DictationMic(state: UiState, viewModel: MainViewModel) {
-    val engine = viewModel.speechEngine()
     val start = rememberMicGate(viewModel::onInfo) { viewModel.onDictate() }
     val pulse by animateFloatAsState(if (state.dictating) 1f + state.dictationLevel * 0.25f else 1f, label = "dictation-level")
     IconButton(
         onClick = {
             when {
                 state.dictating -> viewModel.onDictate()
-                engine == SpeechEngine.NONE -> viewModel.onVoiceUnavailable()
-                else -> start()
+                viewModel.micReady(MicUse.DICTATE) -> start()
+                else -> Unit
             }
         },
         enabled = !state.busy || state.dictating,
@@ -137,10 +139,9 @@ fun DictationMic(state: UiState, viewModel: MainViewModel) {
 /** "Talk": opens the hands-free conversation. */
 @Composable
 fun TalkButton(state: UiState, viewModel: MainViewModel) {
-    val engine = viewModel.speechEngine()
     val open = rememberMicGate(viewModel::onInfo) { viewModel.onVoiceOpen() }
     FilledTonalButton(
-        onClick = { if (engine == SpeechEngine.NONE) viewModel.onVoiceUnavailable() else open() },
+        onClick = { if (viewModel.micReady(MicUse.TALK)) open() },
         enabled = !state.busy && !state.dictating,
         modifier = Modifier.testTag("talk"),
     ) {
@@ -154,7 +155,7 @@ fun TalkButton(state: UiState, viewModel: MainViewModel) {
 @Composable
 fun VoiceConversation(state: UiState, viewModel: MainViewModel) {
     val session = state.voice ?: return
-    val engine = viewModel.speechEngine()
+    val engine = state.speechEngine
     Dialog(onDismissRequest = viewModel::onVoiceClose, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Surface(Modifier.fillMaxSize().testTag("voice-session"), color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxSize().padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -278,3 +279,26 @@ fun ReadAloudButton(text: String, tag: String, onRead: (String) -> Unit) {
     }
 }
 
+/**
+ * Asked once when a mic is tapped on a phone that can only listen through its own speech service
+ * (most non-Pixel phones) and that switch is off (OQ-28). "Turn on" also asks for the microphone.
+ */
+@Composable
+fun PhoneSpeechPrompt(state: UiState, viewModel: MainViewModel) {
+    if (state.askPhoneSpeech == null) return
+    val allow = rememberMicGate(viewModel::onInfo) { viewModel.onAllowPhoneSpeech() }
+    AlertDialog(
+        onDismissRequest = viewModel::onDismissPhoneSpeech,
+        modifier = Modifier.testTag("phone-speech-prompt"),
+        title = { Text("Use the phone's speech service?") },
+        text = {
+            Text(
+                "This phone can't recognise speech on its own. Its own speech service (usually Google's) can, and is asked to " +
+                    "work offline; if its offline pack is missing it may use the internet. MyDayCompanion itself has no internet " +
+                    "access. You can change this in Settings > Voice.",
+            )
+        },
+        confirmButton = { TextButton(onClick = { allow() }, modifier = Modifier.testTag("phone-speech-allow")) { Text("Turn on") } },
+        dismissButton = { TextButton(onClick = viewModel::onDismissPhoneSpeech, modifier = Modifier.testTag("phone-speech-later")) { Text("Not now") } },
+    )
+}

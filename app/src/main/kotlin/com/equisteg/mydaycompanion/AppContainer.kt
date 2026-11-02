@@ -174,7 +174,7 @@ interface DeviceSettings : com.equisteg.mydaycompanion.domain.tools.PrivacySwitc
     fun reset() {
         calendarInPlans = false
         smartModel = true
-        phoneSpeechService = true
+        phoneSpeechService = false
         historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         lockScreenText = false
         widgetTitles = false
@@ -192,7 +192,7 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
         get() = prefs.getBoolean("smart_model", true)
         set(value) = prefs.edit().putBoolean("smart_model", value).apply()
     override var phoneSpeechService: Boolean
-        get() = prefs.getBoolean("phone_speech_service", true)
+        get() = prefs.getBoolean("phone_speech_service", false)
         set(value) = prefs.edit().putBoolean("phone_speech_service", value).apply()
     override var historyKeepDays: Int
         get() = prefs.getInt("history_keep_days", com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS)

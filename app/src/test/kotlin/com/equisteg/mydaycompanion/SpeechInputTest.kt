@@ -121,4 +121,27 @@ class SpeechInputTest {
         latest().triggerOnResults(results("gym at 7"))
         assertEquals(listOf("final:gym at 7"), events)
     }
+
+    @Test
+    fun `an on-device recogniser that fails before it is ready falls back to the phone service`() {
+        ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(true)
+        installPhoneService()
+        input.start(listener)
+        latest().triggerOnError(SpeechRecognizer.ERROR_CLIENT) // listed, but can't bind or has no model
+        shadowOf(Looper.getMainLooper()).idle()
+        assertEquals(SpeechEngine.PHONE_SERVICE, input.engine())
+        latest().triggerOnResults(results("buy milk"))
+        assertEquals(listOf("final:buy milk"), events)
+    }
+
+    @Test
+    fun `a retry waiting to run is dropped when listening is cancelled`() {
+        input.start(listener)
+        val first = ShadowSpeechRecognizer.getLatestSpeechRecognizer()
+        shadowOf(first).triggerOnError(SpeechRecognizer.ERROR_RECOGNIZER_BUSY)
+        input.cancel() // the conversation closed, or the app left the screen
+        shadowOf(Looper.getMainLooper()).idle()
+        assertTrue(ShadowSpeechRecognizer.getLatestSpeechRecognizer() === first, "the microphone is not opened again")
+        assertEquals(emptyList(), events)
+    }
 }

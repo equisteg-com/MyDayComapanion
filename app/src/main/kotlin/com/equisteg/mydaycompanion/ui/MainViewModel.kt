@@ -64,8 +64,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
+import com.equisteg.mydaycompanion.domain.tools.RiskLevel
 import com.equisteg.mydaycompanion.domain.voice.SpokenReplies
 import com.equisteg.mydaycompanion.domain.voice.VoiceIntent
 import com.equisteg.mydaycompanion.domain.voice.VoiceIntents
@@ -102,6 +104,9 @@ data class ChatTurn(val fromOwner: Boolean, val text: String)
 
 /** Where the hands-free voice conversation is (F6). */
 enum class VoicePhase { LISTENING, THINKING, SPEAKING, PAUSED }
+
+/** Which mic the owner tapped: the one in the input (dictation) or Talk. */
+enum class MicUse { DICTATE, TALK }
 
 /**
  * The open voice conversation: what was heard (live while listening), what the agent answered,
@@ -198,8 +203,12 @@ data class UiState(
     /** True while the mic next to the input is filling it from speech. */
     val dictating: Boolean = false,
     val dictationLevel: Float = 0f,
-    /** "Use the phone's speech service" (OQ-28). */
-    val phoneSpeechService: Boolean = true,
+    /** "Use the phone's speech service" (OQ-28); off until the owner turns it on. */
+    val phoneSpeechService: Boolean = false,
+    /** Which recogniser the mics use; refreshed on a tap, on resume and when the switch changes. */
+    val speechEngine: SpeechEngine = SpeechEngine.NONE,
+    /** A mic was tapped on a phone that can only listen through its own speech service: ask once. */
+    val askPhoneSpeech: MicUse? = null,
     /** The result of Settings > Test voice. */
     val voiceCheck: String? = null,
 ) {
@@ -275,6 +284,7 @@ class MainViewModel(
                     lockScreenText = services.deviceSettings.lockScreenText,
                     widgetTitles = services.deviceSettings.widgetTitles,
                     phoneSpeechService = services.deviceSettings.phoneSpeechService,
+                    speechEngine = liveSpeechEngine(),
                 )
             }
             // ML Kit is not touched at all while the flag or the owner's switch is off.
@@ -537,7 +547,7 @@ class MainViewModel(
 
     fun onDismissSuggestion() = _state.update { it.copy(suggestion = null, choice = null) }
 
-    private suspend fun approve(suggestion: AgentSuggestion) {
+    private suspend fun approve(suggestion: AgentSuggestion, spoken: Boolean = false) {
         _state.update { it.copy(suggestion = null) }
         suggestion.basedOn?.let { offered ->
             // The move carries the whole task as it was offered; never write it back over a later edit.
@@ -550,7 +560,9 @@ class MainViewModel(
             is ExecutionResult.NeedsConfirmation -> {
                 val s = _state.value
                 // The tap on the card was the Confirm step; a personal task still asks for the owner's verification.
-                val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges) - ApprovalStep.TAP
+                // A spoken yes stands in for the tap only up to L2: L3 and above always need a tap on screen.
+                val all = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
+                val steps = if (spoken && r.riskLevel >= RiskLevel.L3) all else all - ApprovalStep.TAP
                 advance(PendingConfirmation(suggestion.action, r.actionFingerprint, suggestion.text, "This includes a personal task.", steps, basedOn = suggestion.basedOn))
             }
             is ExecutionResult.Done -> replanAfter(suggestion.action)
@@ -611,13 +623,44 @@ class MainViewModel(
 
     private var focusJob: kotlinx.coroutines.Job? = null
 
-    /** Words from press-to-talk go into the input box; nothing runs until the owner taps "Plan it". */
-    fun onVoiceText(text: String) = _state.update { it.copy(input = join(it.input, text), message = null) }
-
     // ---- Voice (F6): dictation into the input, spoken replies and the hands-free conversation ----
 
-    /** Which recogniser the mic would use now; NONE disables both mics. */
-    fun speechEngine(): SpeechEngine = if (voiceEnabled) services.speechInput.engine() else SpeechEngine.NONE
+    /** Which recogniser the mic would use now; NONE disables both mics. Asks the system, so not on every frame. */
+    private fun liveSpeechEngine(): SpeechEngine = if (voiceEnabled) services.speechInput.engine() else SpeechEngine.NONE
+
+    private fun refreshSpeechEngine() = _state.update { it.copy(speechEngine = liveSpeechEngine()) }
+
+    /** The recogniser last checked (shown in Settings). */
+    fun speechEngine(): SpeechEngine = _state.value.speechEngine
+
+    /**
+     * A mic was tapped. True when there is something to listen with; otherwise says why, or, when
+     * only the phone's own speech service could listen and it is switched off, asks to turn it on.
+     */
+    fun micReady(use: MicUse): Boolean {
+        refreshSpeechEngine()
+        if (_state.value.speechEngine != SpeechEngine.NONE) return true
+        if (voiceEnabled && !services.deviceSettings.phoneSpeechService && services.speechInput.phoneServiceInstalled()) {
+            _state.update { it.copy(askPhoneSpeech = use) }
+        } else {
+            onVoiceUnavailable()
+        }
+        return false
+    }
+
+    /** "Turn on" in the phone-speech prompt (the microphone is already allowed): switch it on and carry on. */
+    fun onAllowPhoneSpeech() {
+        val use = _state.value.askPhoneSpeech ?: return
+        _state.update { it.copy(askPhoneSpeech = null) }
+        onPhoneSpeechService(true)
+        if (_state.value.speechEngine == SpeechEngine.NONE) return onVoiceUnavailable()
+        when (use) {
+            MicUse.DICTATE -> onDictate()
+            MicUse.TALK -> onVoiceOpen()
+        }
+    }
+
+    fun onDismissPhoneSpeech() = _state.update { it.copy(askPhoneSpeech = null) }
 
     private var dictationBase = ""
 
@@ -640,8 +683,9 @@ class MainViewModel(
                 override fun onPartial(text: String) = _state.update { if (it.dictating) it.copy(input = join(dictationBase, text)) else it }
                 override fun onLevel(level: Float) = _state.update { if (it.dictating) it.copy(dictationLevel = level) else it }
                 override fun onFinal(text: String) = _state.update { it.copy(input = join(dictationBase, text), dictating = false, dictationLevel = 0f) }
-                override fun onError(error: SpeechError) = _state.update {
-                    it.copy(dictating = false, dictationLevel = 0f, message = speechProblem(error))
+                override fun onError(error: SpeechError) {
+                    _state.update { it.copy(dictating = false, dictationLevel = 0f, message = speechProblem(error)) }
+                    if (error == SpeechError.UNAVAILABLE || error == SpeechError.OTHER) refreshSpeechEngine()
                 }
             },
         )
@@ -651,6 +695,7 @@ class MainViewModel(
     fun onTestVoice() = launchBusy {
         val status = services.voiceOutput.status()
         val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to "Hi! This is how I'll read your day.")), Requester.USER)
+        refreshSpeechEngine()
         val listening = when (speechEngine()) {
             SpeechEngine.ON_DEVICE -> "Listening: on this phone."
             SpeechEngine.PHONE_SERVICE -> "Listening: the phone's speech service."
@@ -670,12 +715,17 @@ class MainViewModel(
     /** The owner reads one chat line aloud (the speaker button on an answer). */
     fun onReadAloud(text: String) = launchBusy { speak(text, quietly = false) }
 
+    /** Titles of personal tasks are never said out loud; they become "a personal task". */
+    private suspend fun spoken(text: String): String =
+        SpokenReplies.forSpeech(SpokenReplies.redact(text, services.tasks.all().filter { it.personal }.map { it.title }), MAX_SPOKEN)
+
     /** Stops a reply being read out. */
     fun onStopSpeaking() = services.voiceOutput.stop()
 
     fun onPhoneSpeechService(on: Boolean) {
         services.deviceSettings.phoneSpeechService = on
         _state.update { it.copy(phoneSpeechService = on) }
+        refreshSpeechEngine()
     }
 
     private var voiceJob: Job? = null
@@ -738,8 +788,13 @@ class MainViewModel(
                 override fun onError(error: SpeechError) {
                     if (_state.value.voice == null) return
                     // One quiet moment is normal; listen once more before pausing.
-                    if (error == SpeechError.NO_MATCH && ++voiceMisses < 2) return listen()
+                    if (error == SpeechError.NO_MATCH && ++voiceMisses < 2) {
+                        // Not from inside the recogniser's own callback.
+                        viewModelScope.launch { listen() }
+                        return
+                    }
                     voiceMisses = 0
+                    if (error == SpeechError.UNAVAILABLE || error == SpeechError.OTHER) refreshSpeechEngine()
                     updateVoice { it.copy(phase = VoicePhase.PAUSED, level = 0f, hint = speechProblem(error, inConversation = true)) }
                 }
             },
@@ -781,7 +836,8 @@ class MainViewModel(
                 chat(owner = true, text)
                 val answer = when {
                     before.proposal != null && yes -> {
-                        acceptProposal()
+                        // Not cut short by closing the conversation: half-added plans would be added again on a tap.
+                        withContext(NonCancellable) { acceptProposal(spoken = true) }
                         if (_state.value.proposal == null) _state.value.message ?: "Added." else _state.value.message ?: "That didn't work."
                     }
                     before.proposal != null -> {
@@ -790,12 +846,13 @@ class MainViewModel(
                     }
                     before.suggestion != null && yes -> {
                         val last = _state.value.chat.lastOrNull()
-                        approve(before.suggestion)
+                        withContext(NonCancellable) { approve(before.suggestion, spoken = true) }
                         when {
                             _state.value.pending != null -> "Please confirm on the screen."
                             else -> _state.value.chat.lastOrNull()?.takeIf { it !== last && !it.fromOwner }?.text ?: _state.value.message ?: "Done."
                         }
                     }
+                    before.choice != null && yes -> "Tap the one you mean."
                     before.suggestion != null || before.choice != null -> {
                         onDismissSuggestion()
                         "Okay."
@@ -825,13 +882,15 @@ class MainViewModel(
         after.suggestion?.takeIf { it !== before.suggestion }?.let { return "${it.text} Say yes to ${it.actionLabel.lowercase()}, or no." }
         val lastBefore = before.chat.lastOrNull()
         after.chat.lastOrNull()?.takeIf { it !== lastBefore && !it.fromOwner }?.let { return it.text }
-        after.message?.takeIf { it != before.message || text.isNotEmpty() }?.let { return it }
+        after.message?.takeIf { it != before.message }?.let { return it }
         return null
     }
 
     /** Speaks [text] through the `voice.speak` tool and waits until the phone has finished saying it. */
     private suspend fun speakAndWait(text: String): Boolean {
-        val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to SpokenReplies.forSpeech(text, MAX_SPOKEN))), Requester.USER)
+        val words = spoken(text)
+        if (words.isEmpty()) return true
+        val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to words)), Requester.USER)
         if (r !is ExecutionResult.Done) return false
         withTimeoutOrNull(SPEAK_WAIT_MS + text.length * 120L) { services.voiceOutput.speaking.first { !it } }
         return true
@@ -878,7 +937,9 @@ class MainViewModel(
     }
 
     private suspend fun speak(text: String, quietly: Boolean) {
-        val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to SpokenReplies.forSpeech(text, MAX_SPOKEN))), Requester.USER)
+        val words = spoken(text)
+        if (words.isEmpty()) return
+        val r = services.orchestrator.execute(ProposedAction("voice.speak", args("text" to words)), Requester.USER)
         if (r !is ExecutionResult.Done && !quietly) _state.update { it.copy(message = "Reading aloud isn't available. Check the phone's text-to-speech settings.") }
     }
 
@@ -944,9 +1005,16 @@ class MainViewModel(
     }
 
     /** Runs every action of the proposal on screen; the owner's tap (or spoken "yes") is the approval. */
-    private suspend fun acceptProposal() {
+    private suspend fun acceptProposal(spoken: Boolean = false) {
         val proposal = _state.value.proposal ?: return
         var routineProblem: String? = null
+        if (spoken) {
+            // A spoken yes approves only what a tap on a plain card would: nothing personal and nothing above L2.
+            if (proposal.actions.any { services.orchestrator.needsTapToApprove(it) }) {
+                _state.update { it.copy(message = "Please confirm on the screen.") }
+                return
+            }
+        }
         for (action in proposal.actions) {
             val result = runWithUserApproval(action, Requester.AGENT)
             if (result is ExecutionResult.Done) continue
@@ -1415,6 +1483,8 @@ class MainViewModel(
     }
 
     fun onAppForeground() {
+        // A speech app may have been installed or updated while away.
+        refreshSpeechEngine()
         // The ticker counts uptime, so catch up at once after the phone slept.
         _minute.value = nowTime()
         // A session that ended while away has nothing left to announce.
