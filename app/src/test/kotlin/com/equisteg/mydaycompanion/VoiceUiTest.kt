@@ -63,7 +63,12 @@ class VoiceUiTest {
             if (condition()) return
             Thread.sleep(5)
         }
-        assertTrue(condition(), what)
+        val s = viewModel.state.value
+        assertTrue(
+            condition(),
+            "$what (message=${s.message} busy=${s.busy} proposal=${s.proposal != null} voice=${s.voice?.phase} " +
+                "listening=${mic.listening} spoken=$spoken tasks=${runBlocking { graph.tasks.count() }})",
+        )
     }
 
     @Test
@@ -81,7 +86,8 @@ class VoiceUiTest {
         compose.onNodeWithTag("voice-yes").assertTextContains("Add it")
 
         mic.say("yes please")
-        waitFor("saved") { runBlocking { graph.tasks.count() } == 2 }
+        // "Call mom" is a task; the meeting and the 6 pm gym are timed events, so one task is saved.
+        waitFor("saved") { runBlocking { graph.tasks.count() } == 1 }
         waitFor("confirmation spoken") { spoken.size == 2 }
         assertEquals("Added to your day.", spoken.last())
         val saved = runBlocking { graph.plans.get(tomorrow) }!!
