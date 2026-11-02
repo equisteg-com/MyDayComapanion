@@ -27,10 +27,13 @@ import java.time.temporal.TemporalAdjusters
  * people write them (see [TimeParser], [DateParser], [DurationParser]), splits a message into
  * items without breaking names or lists ([ClauseSplitter]), and lets one message cover several
  * days. Version 3 reads numeric dates ("3/4") in the owner's chosen order (request context "dateOrder").
+ * Version 4 reads spoken text: number words ("at seven thirty"), run-on sentences without commas
+ * ("doctor at 11 pick up kids at 3:30"), "plan my day" lead-ins, "then" (the next step starts after
+ * the timed one before it) and "before that" (due before the timed one before it).
  */
 class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiModelProvider {
     override val id: String = "rules"
-    override val version: String = "rule-extractor/3"
+    override val version: String = "rule-extractor/4"
 
     override fun capabilities() = ProviderCapabilities(
         modelClass = ModelClass.DETERMINISTIC,
@@ -61,7 +64,8 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
     /** [now] enables relative times ("in 2 hours") and past-time warnings for today; null skips both. */
     fun extract(input: String, today: LocalDate, now: LocalTime? = null, order: NumericDateOrder? = null): TaskExtractionDto {
         val dates = if (order == null) dates else DateParser(order)
-        val clauses = ClauseSplitter.split(TextSpans.expandShorthand(input))
+        val linked = ClauseSplitter.splitLinked(stripPlanLeadIn(TextSpans.expandShorthand(input)))
+        val clauses = linked.map { it.text }
         val clauseDates = clauses.map { c -> dates.findAll(c, today) }
         val firstDate = clauses.indices.firstNotNullOfOrNull { i ->
             val repeat = repeatOf(clauses[i])
@@ -74,6 +78,8 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
         val events = mutableListOf<ExtractedEventDto>()
         val warnings = mutableListOf<String>()
         var current: LocalDate? = null
+        // The last item that has a clock time on its day, for "then …" and "… before that".
+        var anchor: Triple<LocalDate, LocalTime, LocalTime>? = null
 
         clauses.forEachIndexed { index, raw ->
             if (ContentSafety.looksLikeInstructionToAssistant(raw)) {
@@ -91,13 +97,16 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
             val date = clauseDate ?: current ?: targetDate
             val reminder = remindPhrase.containsMatchIn(text)
             text = text.replace(remindPhrase, " ")
+            val beforeAnchor = beforeThat.containsMatchIn(text)
+            text = text.replace(beforeThat, " ")
+            val sameDayAnchor = anchor?.takeIf { it.first == date }
 
             val durations = DurationParser.findAll(relativeGuard(text, date == today && now != null))
             val explicitDuration = durations.firstOrNull()?.minutes
             text = TextSpans.cut(text, durations.map { it.range })
 
             val times = TimeParser.findAll(text, now.takeIf { date == today })
-            val at = times.firstOrNull { it.role == TimeRole.AT }
+            val at = times.firstOrNull { it.role == TimeRole.AT }?.let { followOn(it, sameDayAnchor?.second) }
             val deadline = times.firstOrNull { it.role == TimeRole.DEADLINE }
             val after = times.firstOrNull { it.role == TimeRole.AFTER }
             val soft = times.firstOrNull { it.role == TimeRole.SOFT }
@@ -115,7 +124,7 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
 
             // A timed reminder or a repeating item is a task placed at that time; anything else timed is an event.
             if (at != null && !reminder && repeatName == null) {
-                val eventTitle = title.replace(haveLeadIn, "").let(::trimDangling)
+                val eventTitle = title.replace(haveLeadIn, "").replace(scheduleLeadIn, "").let(::trimDangling)
                 if (!meaningful(eventTitle)) {
                     warnings += "Could not tell what happens at ${at.start}. Add a few words, like \"call Raj at ${at.start}\"."
                     return@forEachIndexed
@@ -129,6 +138,7 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
                     start = start.toString(),
                     durationMinutes = duration,
                 )
+                anchor = Triple(date, start, start.plusMinutes(duration.toLong()))
                 return@forEachIndexed
             }
             if (haveLeadIn.containsMatchIn(title) && eventWord.containsMatchIn(title)) {
@@ -137,13 +147,17 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
                 return@forEachIndexed
             }
             if (!meaningful(title)) return@forEachIndexed
-            val preferred = (at ?: after ?: soft?.takeIf { softUsed })?.start
+            val chained = sameDayAnchor?.third?.takeIf { linked[index].afterPrevious && !beforeAnchor }
+            val preferred = (at ?: after ?: soft?.takeIf { softUsed })?.start ?: chained
+            val due = deadline?.start ?: sameDayAnchor?.second?.takeIf { beforeAnchor }
+            val minutes = explicitDuration ?: estimateDuration(title)
+            anchor = preferred?.let { p -> Triple(date, p, p.plusMinutes(minutes.toLong()).coerceAtLeast(p)) } ?: anchor?.takeIf { beforeAnchor }
             tasks += ExtractedTaskDto(
                 title = title.capitalized().take(Task.MAX_TITLE_LENGTH),
-                priority = priority,
-                durationMinutes = explicitDuration ?: estimateDuration(title),
+                priority = if (due != null) "HIGH" else priority,
+                durationMinutes = minutes,
                 date = itemDate,
-                deadline = deadline?.start?.toString(),
+                deadline = due?.toString(),
                 preferredStart = preferred?.toString(),
                 repeat = repeatName,
                 remindAt = at?.start?.takeIf { reminder }?.toString(),
@@ -156,6 +170,29 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
             fixedEvents = events.take(TaskExtractionValidator.MAX_EVENTS),
             warnings = warnings.distinct().take(10),
         )
+    }
+
+    /**
+     * "wake up at 6am, yoga at 6:30": a bare hour that follows a timed item on the same day is read
+     * as the first such time at or after that item, so 6:30 stays in the morning; "meeting at 10,
+     * call at 4" still reads 4 as 16:00.
+     */
+    private fun followOn(t: TimeMatch, after: LocalTime?): TimeMatch {
+        if (!t.assumedHalf || t.end != null || after == null) return t
+        val am = LocalTime.of(t.start.hour % 12, t.start.minute)
+        val pm = am.plusHours(12)
+        val pick = listOf(am, pm).firstOrNull { it >= after } ?: return t
+        return if (pick == t.start) t else t.copy(start = pick, assumedHalf = false)
+    }
+
+    /**
+     * "Plan my day …", "make a plan for tomorrow: …", "help me organise today": the request to plan is
+     * not a task. A day named in it ("tomorrow") is kept so the items still land on that day.
+     */
+    private fun stripPlanLeadIn(text: String): String {
+        val m = planLeadIn.find(text) ?: return text
+        val day = dayWord.find(m.value)?.value
+        return listOfNotNull(day, text.substring(m.range.last + 1)).joinToString(" ").trim()
     }
 
     /** "in 2 hours" is a start time today, not a duration; hide it from the duration reader then. */
@@ -224,6 +261,16 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
         val trimChars = charArrayOf(' ', '.', ',', '!', '?', '-', ':', ';', '~', '@', '(', ')', '\'', '"')
         val stopWords = setOf("at", "and", "the", "a", "an", "to", "on", "in", "of", "for", "by", "then", "also", "it", "do", "i", "me", "")
         val filler = Regex("^(that's it|thats it|thanks|thank you|please|that is all|nothing else|ok|okay|yes|no)$", RegexOption.IGNORE_CASE)
+        val planLeadIn = Regex(
+            "^\\s*(?:(?:hey|hi|hello|ok|okay|so|please|can\\s+you|could\\s+you|would\\s+you|will\\s+you|i\\s+want\\s+you\\s+to|i'?d\\s+like\\s+you\\s+to|help\\s+me(?:\\s+to)?)[\\s,]+)*" +
+                "(?:plan|organi[sz]e|sort\\s+out|make|create|build|set\\s+up)\\s+(?:out\\s+|up\\s+)?(?:a\\s+|my\\s+|the\\s+)?" +
+                "(?:plan|day|schedule|today|tomorrow|tonight)\\b(?:\\s+(?:for\\s+)?(?:me\\b|my\\s+day\\b|the\\s+day\\b|today\\b|tomorrow\\b|tonight\\b))*" +
+                "(?:\\s+please)?[\\s,:.!-]*",
+            RegexOption.IGNORE_CASE,
+        )
+        val scheduleLeadIn = Regex("^(?:schedule|add|put|set\\s+up)\\s+(?:a\\s+|an\\s+|my\\s+|the\\s+)?(?=\\S)", RegexOption.IGNORE_CASE)
+        val dayWord = Regex("\\b(?:today|tomorrow|tonight)\\b", RegexOption.IGNORE_CASE)
+        val beforeThat = Regex("\\b(?:just\\s+|right\\s+)?before\\s+(?:that|it|then|this|the\\s+(?:meeting|call|appointment))\\b", RegexOption.IGNORE_CASE)
         val todayPhrase = Regex("\\btonight\\b|\\bthis\\s+(?:morning|afternoon|evening)\\b", RegexOption.IGNORE_CASE)
         val remindPhrase = Regex(
             "\\b(?:please\\s+)?(?:remind\\s+me|set\\s+(?:a\\s+)?reminder|don'?t\\s+let\\s+me\\s+forget)(?:\\s+(?:to|about|that))?\\b",
@@ -270,6 +317,8 @@ class RuleBasedTaskExtractor(private val dates: DateParser = DateParser()) : AiM
             RegexOption.IGNORE_CASE,
         )
         val durationTable: List<Pair<Regex, Int>> = listOf(
+            "\\b(medicine|medication|meds|pills?|tablets?|vitamins?|insulin)\\b" to 5,
+            "\\bread\\s+(?:a\\s+|the\\s+|my\\s+)?book\\b" to 30,
             "\\b(call|phone|ring)\\b" to 15,
             "\\b(e-?mail|text|message|reply|respond|whatsapp)\\b" to 15,
             "\\b(pay|bill|book|renew|order|recharge)\\b" to 15,
