@@ -2,7 +2,6 @@ package com.equisteg.mydaycompanion.ui.screens
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -38,12 +37,16 @@ val QUICK_ASKS = listOf("What's next?", "What's left?", "Roll over", "Focus 25 m
 
 /** The last lines of the chat: the owner's on the right, the agent's on the left. In memory only. */
 @Composable
-fun ChatBubbles(chat: List<ChatTurn>, modifier: Modifier = Modifier) {
+fun ChatBubbles(chat: List<ChatTurn>, modifier: Modifier = Modifier, onReadAloud: ((String) -> Unit)? = null) {
     if (chat.isEmpty()) return
     Column(modifier.fillMaxWidth().testTag("chat").animateContentSize(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        chat.takeLast(SHOWN).forEach { turn ->
+        chat.takeLast(SHOWN).forEachIndexed { i, turn ->
             val colors = MaterialTheme.colorScheme
-            Box(Modifier.fillMaxWidth(), contentAlignment = if (turn.fromOwner) Alignment.CenterEnd else Alignment.CenterStart) {
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = if (turn.fromOwner) Arrangement.End else Arrangement.Start,
+                verticalAlignment = Alignment.Bottom,
+            ) {
                 Surface(
                     shape = RoundedCornerShape(
                         topStart = 18.dp,
@@ -64,6 +67,7 @@ fun ChatBubbles(chat: List<ChatTurn>, modifier: Modifier = Modifier) {
                             .then(if (turn.fromOwner) Modifier else Modifier.semantics { liveRegion = LiveRegionMode.Polite }),
                     )
                 }
+                if (!turn.fromOwner && onReadAloud != null) ReadAloudButton(turn.text, "read-aloud-$i", onReadAloud)
             }
         }
     }

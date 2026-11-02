@@ -46,7 +46,7 @@ import com.equisteg.mydaycompanion.domain.tools.GeneratePlanTool
 import com.equisteg.mydaycompanion.domain.tools.IdGenerator
 import com.equisteg.mydaycompanion.data.device.ContentResolverCalendarProvider
 import com.equisteg.mydaycompanion.device.AndroidDeviceActionLauncher
-import com.equisteg.mydaycompanion.device.AndroidSpeaker
+import com.equisteg.mydaycompanion.voice.AndroidSpeaker
 import com.equisteg.mydaycompanion.domain.tools.CalendarInsertTool
 import com.equisteg.mydaycompanion.domain.tools.ComposeMessageTool
 import com.equisteg.mydaycompanion.domain.tools.CreateRoutineTool
@@ -114,6 +114,12 @@ interface AppServices {
 
     /** Shows "focus time is up" at [atMillis] even if the app is closed (OQ-27); null cancels it. */
     fun scheduleFocusEnd(atMillis: Long?) {}
+
+    /** Press-to-talk speech recognition (F6); the conversation and the dictation mic share it. */
+    val speechInput: com.equisteg.mydaycompanion.voice.SpeechInput get() = com.equisteg.mydaycompanion.voice.NoSpeechInput
+
+    /** Whether a reply is being spoken, and a way to stop it. Speaking itself goes through the `voice.speak` tool. */
+    val voiceOutput: com.equisteg.mydaycompanion.voice.VoiceOutput get() = com.equisteg.mydaycompanion.voice.SilentVoiceOutput
 }
 
 /** Small owner switches that are not part of the encrypted data (they hold no personal content). */
@@ -122,6 +128,12 @@ interface DeviceSettings : com.equisteg.mydaycompanion.domain.tools.PrivacySwitc
 
     /** Use the phone's Gemini Nano to understand typed and spoken text, where the phone has it. */
     var smartModel: Boolean
+
+    /**
+     * When the phone has no on-device speech recogniser, use the phone's own speech service
+     * (asked to stay offline). On by default (OQ-28); off means voice input only works on-device.
+     */
+    var phoneSpeechService: Boolean
 
     /** How many days History keeps (F16); one of [com.equisteg.mydaycompanion.domain.audit.HistoryRetention.CHOICES_DAYS]. */
     override var historyKeepDays: Int
@@ -162,6 +174,7 @@ interface DeviceSettings : com.equisteg.mydaycompanion.domain.tools.PrivacySwitc
     fun reset() {
         calendarInPlans = false
         smartModel = true
+        phoneSpeechService = true
         historyKeepDays = com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS
         lockScreenText = false
         widgetTitles = false
@@ -178,6 +191,9 @@ class SharedPrefsDeviceSettings(context: Context) : DeviceSettings {
     override var smartModel: Boolean
         get() = prefs.getBoolean("smart_model", true)
         set(value) = prefs.edit().putBoolean("smart_model", value).apply()
+    override var phoneSpeechService: Boolean
+        get() = prefs.getBoolean("phone_speech_service", true)
+        set(value) = prefs.edit().putBoolean("phone_speech_service", value).apply()
     override var historyKeepDays: Int
         get() = prefs.getInt("history_keep_days", com.equisteg.mydaycompanion.domain.audit.HistoryRetention.DEFAULT_DAYS)
             .takeIf { it in com.equisteg.mydaycompanion.domain.audit.HistoryRetention.CHOICES_DAYS }
@@ -246,6 +262,8 @@ class AppContainer(context: Context) : AppServices {
     override val localModel: LocalModelControl get() = nano
     private val launcher by lazy { AndroidDeviceActionLauncher(appContext) { clock.zone } }
     private val speaker by lazy { AndroidSpeaker(appContext) }
+    override val voiceOutput: com.equisteg.mydaycompanion.voice.VoiceOutput get() = speaker
+    override val speechInput by lazy { com.equisteg.mydaycompanion.voice.AndroidSpeechInput(appContext) { flags.isEnabled(Flag.VOICE) && deviceSettings.phoneSpeechService } }
     private val permissionChecker by lazy { AndroidPermissionChecker(appContext) }
     override val maintenance by lazy {
         DailyMaintenance(
