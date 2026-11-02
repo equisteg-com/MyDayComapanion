@@ -120,23 +120,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 modifier = Modifier.testTag("calendar-toggle"),
             )
         }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("Speak replies")
-                Text("Says what was added out loud. \"Read\" on My day reads the day's summary any time.", style = MaterialTheme.typography.bodySmall)
-            }
-            Switch(
-                checked = state.preferences.speechOutputEnabled,
-                onCheckedChange = { viewModel.onPreferencesChange(state.preferences.copy(speechOutputEnabled = it)) },
-                enabled = !state.busy,
-                modifier = Modifier.testTag("speak-toggle"),
-            )
-        }
-        Text(
-            if (isOnDeviceRecognition(context)) "Voice input runs on this phone; your speech doesn't leave it."
-            else "This phone has no on-device speech recognition, so voice input is off. Audio is never sent to an online service; you can type instead.",
-            style = MaterialTheme.typography.bodySmall,
-        )
+        if (viewModel.voiceEnabled) VoiceSettings(state, viewModel)
 
         if (viewModel.smartModelAllowed) {
             HorizontalDivider()
@@ -146,7 +130,7 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         HorizontalDivider()
         Text("Permissions", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Microphone: asked the first time you tap 🎤, used only while you speak. " +
+            "Microphone: asked the first time you tap the mic or Talk, used only while you talk to the app. " +
                 "Calendar: asked when you switch on \"Show my calendar in plans\", read-only. " +
                 "Alarms, calls, messages, directions and calendar entries open the right app for you to finish; each needs your confirmation and screen lock. " +
                 "Notifications: asked once, for reminders and the morning brief. If you say no, everything else still works; " +

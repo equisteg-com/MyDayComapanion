@@ -18,8 +18,11 @@ object PlanValidator {
             if (sorted[i].start < sorted[i - 1].end) errors += "Task blocks overlap: ${sorted[i - 1].refId} and ${sorted[i].refId}"
         }
         val events = plan.blocks.filter { it.kind == BlockKind.FIXED_EVENT }
+        val window = PlanWindow.of(request)
         for (t in tasks) {
-            if (t.start < request.dayStart || t.end > request.dayEnd) errors += "Task ${t.refId} is outside the day window"
+            val s = t.start.hour * 60 + t.start.minute
+            val e = t.end.hour * 60 + t.end.minute
+            if (s < window.first || e > window.last) errors += "Task ${t.refId} is outside the day window"
             if (request.notBefore != null && t.start < request.notBefore) errors += "Task ${t.refId} starts in the past"
             if (!t.end.isAfter(t.start)) errors += "Task ${t.refId} has no duration"
             for (e in events) {

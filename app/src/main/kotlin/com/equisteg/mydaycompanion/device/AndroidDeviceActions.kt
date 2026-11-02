@@ -6,17 +6,11 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.AlarmClock
 import android.provider.CalendarContract
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import com.equisteg.mydaycompanion.domain.tools.DeviceAction
 import com.equisteg.mydaycompanion.domain.tools.DeviceActionLauncher
-import com.equisteg.mydaycompanion.domain.tools.Speaker
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeoutOrNull
 import java.time.ZoneId
-import java.util.Locale
 
 /**
  * Hands device actions to other apps with Android intents (build doc F8). The other app shows the
@@ -56,41 +50,5 @@ class AndroidDeviceActionLauncher(private val context: Context, private val zone
         } catch (e: SecurityException) {
             false
         }
-    }
-}
-
-/**
- * The phone's own text-to-speech engine; offline voices are used when the phone has them. The
- * engine is started only when something is spoken and shut down when it finishes, so nothing is
- * bound in the background for owners who never use voice.
- */
-class AndroidSpeaker(context: Context) : Speaker {
-    private val appContext = context.applicationContext
-    private var current: TextToSpeech? = null // only touched on the main thread
-
-    override suspend fun speak(text: String): Boolean = withContext(Dispatchers.Main) {
-        // A new reply replaces one still being spoken, as QUEUE_FLUSH would on a shared engine.
-        current?.let { it.stop(); it.shutdown() }
-        current = null
-        val ready = CompletableDeferred<Boolean>()
-        val tts = TextToSpeech(appContext) { status -> ready.complete(status == TextToSpeech.SUCCESS) }
-        val ok = withTimeoutOrNull(3_000) { ready.await() } ?: false
-        if (!ok) {
-            tts.shutdown()
-            return@withContext false
-        }
-        tts.setOnUtteranceProgressListener(
-            object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-                override fun onDone(utteranceId: String?) = tts.shutdown()
-                @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) = tts.shutdown()
-            },
-        )
-        current = tts
-        tts.language = Locale.getDefault()
-        val queued = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "mdc-speak") == TextToSpeech.SUCCESS
-        if (!queued) tts.shutdown()
-        queued
     }
 }

@@ -114,12 +114,13 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             ) {
                 Column(Modifier.padding(16.dp).animateContentSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("What do you need to do?", style = MaterialTheme.typography.titleMedium)
-                    ChatBubbles(state.chat)
+                    ChatBubbles(state.chat, onReadAloud = if (viewModel.voiceEnabled) viewModel::onReadAloud else null)
                     OutlinedTextField(
                         value = state.input,
                         onValueChange = viewModel::onInputChange,
                         modifier = Modifier.fillMaxWidth().testTag("input"),
-                        placeholder = { Text("tmrw gym 6am, call Raj around 4ish, dentist fri 3-4pm, finish report by eod") },
+                        placeholder = { Text(if (state.dictating) "Listening…" else "tmrw gym 6am, call Raj around 4ish, dentist fri 3-4pm, finish report by eod") },
+                        trailingIcon = if (viewModel.voiceEnabled) ({ DictationMic(state, viewModel) }) else null,
                         minLines = 2,
                         shape = MaterialTheme.shapes.medium,
                     )
@@ -133,7 +134,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                             enabled = !state.busy && state.input.isNotBlank(),
                             modifier = Modifier.testTag("submit"),
                         ) { Text("Plan it") }
-                        if (viewModel.voiceEnabled) VoiceInputButton(enabled = !state.busy, onText = viewModel::onVoiceText, onMessage = viewModel::onInfo)
+                        if (viewModel.voiceEnabled) TalkButton(state, viewModel)
                         QuickAsks(enabled = !state.busy, onAsk = viewModel::onAsk)
                     }
                     state.message?.let {
@@ -238,6 +239,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
         item { InsightsCard(insights) }
     }
+
+    VoiceConversation(state, viewModel)
+    PhoneSpeechPrompt(state, viewModel)
 
     tasks.firstOrNull { it.id == editingId }?.let { task ->
         TaskEditDialog(

@@ -36,6 +36,6 @@ internal object TextSpans {
             .replace(Regex("\\s&\\s"), " and ")
             .replace(Regex("\\s\\+\\s"), " and ")
         for ((r, to) in shorthand) out = out.replace(r, to)
-        return out
+        return SpokenNumbers.normalize(out)
     }
 }

@@ -15,17 +15,24 @@ import java.time.LocalTime
  *
  * Ordering: tasks with a deadline on the plan day first (earliest deadline first), then tasks
  * with a preferred start (earliest first), then by priority (high first), then by the order the
- * user gave them. A task with a preferred start goes at or after that time when it fits there,
- * otherwise into the first gap that fits. Tasks that do not fit are reported as unscheduled
- * rather than silently squeezed in; fixed events are never moved.
+ * user gave them. A task with a preferred start goes to the free time nearest that time (later
+ * is preferred over earlier). Tasks that do not fit are reported as unscheduled rather than
+ * silently squeezed in; fixed events are never moved.
+ *
+ * Version 4: the day window grows to include anything the owner gave a clock time ("gym at 7am"
+ * with a 9:00 day start, "medicine at 9pm" with a 21:00 day end), see [PlanWindow]; a timed task
+ * that can't go at its time goes as close to it as possible instead of the first gap of the day.
  */
 class DeterministicPlanner : PlannerEngine {
-    override val version: String = "deterministic-planner/3"
+    override val version: String = "deterministic-planner/4"
 
     override fun plan(request: PlanRequest): DayPlan {
         val issues = mutableListOf<PlanIssue>()
-        val dayStartMin = request.dayStart.toMinuteOfDay()
-        val dayEndMin = request.dayEnd.toMinuteOfDay()
+        val window = PlanWindow.of(request)
+        val dayStartMin = window.first
+        val dayEndMin = window.last
+        val ownStart = request.dayStart.toMinuteOfDay()
+        val ownEnd = request.dayEnd.toMinuteOfDay()
         val earliestMin = maxOf(dayStartMin, request.notBefore?.toMinuteOfDay()?.roundUpTo(5) ?: dayStartMin)
 
         val events = request.fixedEvents.filter { it.date == request.date }.sortedBy { it.start }
@@ -44,9 +51,6 @@ class DeterministicPlanner : PlannerEngine {
                     },
                 )
             }
-        }
-        events.filter { it.start.toMinuteOfDay() < dayStartMin || it.end.toMinuteOfDay() > dayEndMin }.forEach {
-            issues += PlanIssue(PlanIssueType.OUTSIDE_DAY_WINDOW, it.id, "A fixed event falls outside the planning window.")
         }
 
         var free = freeSlots(earliestMin, dayEndMin, eventBlocks)
@@ -72,15 +76,23 @@ class DeterministicPlanner : PlannerEngine {
         for (task in candidates) {
             val duration = task.durationMinutes.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
             val preferred = task.preferredStart?.toMinuteOfDay()
-            var slotIndex = if (preferred == null) -1 else free.indexOfFirst { maxOf(it.first, preferred) + duration <= it.last }
-            if (slotIndex < 0) slotIndex = free.indexOfFirst { it.last - it.first >= duration }
-            if (slotIndex < 0) {
+            val placement = if (preferred == null) {
+                // Untimed work stays inside the owner's own day window, even when timed items widened it.
+                free.withIndex().firstNotNullOfOrNull { (i, slot) ->
+                    val from = maxOf(slot.first, ownStart)
+                    val to = minOf(slot.last, ownEnd)
+                    if (to - from >= duration) i to from else null
+                }
+            } else {
+                nearest(free, preferred, duration)
+            }
+            if (placement == null) {
                 unscheduled += task.id
                 issues += PlanIssue(PlanIssueType.OVERLOADED, task.id, "Not enough free time left in the day for this task.")
                 continue
             }
+            val (slotIndex, start) = placement
             val slot = free[slotIndex]
-            val start = if (preferred != null && maxOf(slot.first, preferred) + duration <= slot.last) maxOf(slot.first, preferred) else slot.first
             val end = start + duration
             taskBlocks += PlanBlock(task.id, task.title, BlockKind.TASK, start.toLocalTime(), end.toLocalTime())
 
@@ -104,6 +116,16 @@ class DeterministicPlanner : PlannerEngine {
         val blocks = (eventBlocks + taskBlocks).sortedWith(compareBy({ it.start }, { it.kind.ordinal }))
         return DayPlan(request.date, blocks, unscheduled, issues, version)
     }
+
+    /**
+     * The start closest to [preferred] in any free interval that fits [duration]. Starting late
+     * costs half as much as starting early, so "after 6" lands after 6 when it can.
+     */
+    private fun nearest(free: List<IntRange>, preferred: Int, duration: Int): Pair<Int, Int>? =
+        free.withIndex()
+            .filter { it.value.last - it.value.first >= duration }
+            .map { (i, slot) -> i to preferred.coerceIn(slot.first, slot.last - duration) }
+            .minByOrNull { (_, start) -> if (start >= preferred) start - preferred else 2 * (preferred - start) }
 
     /** Free intervals (in minutes of day, inclusive start / exclusive end encoded as first..last). */
     private fun freeSlots(from: Int, to: Int, busy: List<PlanBlock>): List<IntRange> {

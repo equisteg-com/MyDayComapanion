@@ -25,7 +25,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowSpeechRecognizer
 import java.time.LocalDate
 import java.time.LocalTime
 import kotlin.test.assertEquals
@@ -74,10 +73,14 @@ class DeviceActionsUiTest {
     }
 
     @Test
-    fun `without an on-device recogniser the mic is off, never a cloud fallback`() {
-        ShadowSpeechRecognizer.setIsOnDeviceRecognitionAvailable(false)
+    fun `with the phone service switched off and no on-device recogniser, voice explains and never listens`() {
+        services.speechInput.engine = com.equisteg.mydaycompanion.voice.SpeechEngine.NONE
+        viewModel.onPhoneSpeechService(false)
         compose.setContent { AppNavigation(viewModel) }
-        compose.onNodeWithTag("voice").performScrollTo().assertIsNotEnabled().assertTextContains("Needs on-device voice", substring = true)
+        compose.onNodeWithTag("voice").performClick()
+        compose.waitUntil(5_000) { viewModel.state.value.message != null }
+        assertTrue("Use the phone's speech service" in viewModel.state.value.message!!, viewModel.state.value.message!!)
+        assertEquals(0, services.speechInput.starts)
     }
 
     @Test

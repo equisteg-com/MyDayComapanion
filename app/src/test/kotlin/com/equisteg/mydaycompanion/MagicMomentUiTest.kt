@@ -52,6 +52,7 @@ internal class TestServices(
     override val deviceSettings = object : DeviceSettings {
         override var calendarInPlans = false
         override var smartModel = true
+        override var phoneSpeechService = true
         // The privacy switches are the ones the `settings.privacy` tool in the test graph changes.
         override var historyKeepDays: Int by graph.privacy::historyKeepDays
         override var lockScreenText: Boolean by graph.privacy::lockScreenText
@@ -90,6 +91,10 @@ internal class TestServices(
     override fun refreshWidget() {
         widgetRefreshes++
     }
+
+    /** The microphone and the speaker in tests: speech is fed with [FakeSpeechInput.say]. */
+    override val speechInput = FakeSpeechInput()
+    override val voiceOutput = FakeVoiceOutput()
 
     init {
         runBlocking {

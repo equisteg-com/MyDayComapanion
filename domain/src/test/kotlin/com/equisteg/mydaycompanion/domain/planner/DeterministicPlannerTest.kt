@@ -109,11 +109,39 @@ class DeterministicPlannerTest {
     }
 
     @Test
-    fun `a preferred start that cannot fit falls back to the first free gap`() {
+    fun `a timed task near the end of the day stretches the window instead of moving to the morning`() {
+        // Planner v4: the owner said 20:00, so the 21:00 day end gives way; v3 moved it to 09:00.
         val late = task("late", 120).copy(preferredStart = LocalTime.of(20, 0))
         val req = request(listOf(late))
         val plan = planner.plan(req)
         assertEquals(emptyList(), PlanValidator.validate(plan, req))
-        assertEquals(LocalTime.of(9, 0), plan.blocks.single().start)
+        assertEquals(LocalTime.of(20, 0), plan.blocks.single().start)
+    }
+
+    @Test
+    fun `a timed task whose time is taken goes to the nearest free time, later before earlier`() {
+        val call = task("call", 30).copy(preferredStart = LocalTime.of(15, 0))
+        val req = request(listOf(call), listOf(meeting("meeting", LocalTime.of(14, 30), 60)))
+        val plan = planner.plan(req)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+        assertEquals(LocalTime.of(15, 30), plan.blocks.first { it.refId == "call" }.start)
+    }
+
+    @Test
+    fun `an event before the day start widens the window and raises no issue`() {
+        val req = request(listOf(task("report", 60)), listOf(meeting("gym", LocalTime.of(7, 0))))
+        val plan = planner.plan(req)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+        assertTrue(plan.issues.isEmpty())
+        assertEquals(LocalTime.of(9, 0), plan.blocks.first { it.refId == "report" }.start, "untimed work still starts at the owner's day start")
+    }
+
+    @Test
+    fun `a 9pm reminder task is planned at 9pm, not at the start of the day`() {
+        val pills = task("pills", 5).copy(preferredStart = LocalTime.of(21, 0))
+        val req = request(listOf(pills))
+        val plan = planner.plan(req)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+        assertEquals(LocalTime.of(21, 0), plan.blocks.single().start)
     }
 }

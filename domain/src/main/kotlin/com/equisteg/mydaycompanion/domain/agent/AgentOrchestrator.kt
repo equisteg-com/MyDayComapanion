@@ -199,6 +199,17 @@ class AgentOrchestrator(
     /** Fingerprint the UI must echo back in a [UserConfirmation] after the user approves [action]. */
     fun fingerprint(action: ProposedAction): String = ToolAuthorizationPolicy.fingerprint(action.toolId, action.args.canonical())
 
+    /**
+     * True when [action] may not be approved by a spoken "yes": an unknown or invalid action, one
+     * touching a personal item, or one at L3 and above. Those need a tap (and any screen lock) on screen.
+     * Runs nothing and writes no audit entry.
+     */
+    suspend fun needsTapToApprove(action: ProposedAction): Boolean {
+        val tool = registry.find(action.toolId) ?: return true
+        if (tool.validate(action.args) != ArgsValidation.Ok) return true
+        return tool.spec.riskLevel >= RiskLevel.L3 || tool.touchesPersonal(action.args)
+    }
+
     suspend fun execute(action: ProposedAction, requester: Requester, confirmation: UserConfirmation? = null): ExecutionResult {
         val tool = registry.find(action.toolId)
         val validation = tool?.validate(action.args)
