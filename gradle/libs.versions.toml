@@ -18,7 +18,7 @@ sqlcipher = "4.10.0"
 junit4 = "4.13.2"
 androidxTestCore = "1.6.1"
 androidxTestExtJunit = "1.2.1"
-robolectric = "4.16"
+robolectric = "4.17"
 # Gemini Nano (D-03). 1.0.0-beta5 needs Kotlin 2.3; stay on beta4 until Kotlin is upgraded.
 mlkitGenaiPrompt = "1.0.0-beta4"
 
