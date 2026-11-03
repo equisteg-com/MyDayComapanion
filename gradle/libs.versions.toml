@@ -1,7 +1,7 @@
 # Every dependency here must also be listed in docs/prebuild/11-dependency-license-inventory.md.
 # Adding a network, analytics, cloud or paid SDK requires a founder-approved decision first.
 [versions]
-agp = "8.13.0"
+agp = "9.5.0"
 kotlin = "2.2.21"
 ksp = "2.2.21-2.0.5"
 coroutines = "1.10.2"
