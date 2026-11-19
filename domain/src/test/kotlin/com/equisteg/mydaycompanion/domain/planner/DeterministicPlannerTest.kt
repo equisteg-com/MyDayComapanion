@@ -137,6 +137,29 @@ class DeterministicPlannerTest {
     }
 
     @Test
+    fun `a midnight preferred task cannot roll over into the next day`() {
+        val late = task("late", 30).copy(preferredStart = LocalTime.of(23, 50))
+        val req = request(listOf(late))
+        val plan = planner.plan(req)
+
+        assertTrue(plan.blocks.isEmpty())
+        assertEquals(listOf("late"), plan.unscheduledTaskIds)
+        assertTrue(plan.issues.any { it.type == PlanIssueType.OVERLOADED && it.refId == "late" })
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+    }
+
+    @Test
+    fun `a same-day task ending before midnight is still scheduled`() {
+        val late = task("late", 5).copy(preferredStart = LocalTime.of(23, 50))
+        val req = request(listOf(late))
+        val plan = planner.plan(req)
+
+        assertEquals(LocalTime.of(23, 50), plan.blocks.single().start)
+        assertEquals(LocalTime.of(23, 55), plan.blocks.single().end)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+    }
+
+    @Test
     fun `a 9pm reminder task is planned at 9pm, not at the start of the day`() {
         val pills = task("pills", 5).copy(preferredStart = LocalTime.of(21, 0))
         val req = request(listOf(pills))

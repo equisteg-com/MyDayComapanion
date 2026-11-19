@@ -66,6 +66,10 @@ jobs:
                   bad.append(f"{rel}: new schema not committed")
               elif json.loads(c.read_text()) != json.loads(g.read_text()):
                   bad.append(f"{rel}: differs from the committed schema (bump MdcDatabase.VERSION and add a Migration)")
+          for c in sorted(committed.rglob("*.json")):
+              rel = c.relative_to(committed)
+              if not (generated / rel).exists():
+                  bad.append(f"{rel}: committed Room schema was deleted")
           for line in bad:
               print(f"::error::{line}")
           sys.exit(1 if bad else 0)
