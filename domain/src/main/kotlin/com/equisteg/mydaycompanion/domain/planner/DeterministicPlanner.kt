@@ -75,6 +75,13 @@ class DeterministicPlanner : PlannerEngine {
 
         for (task in candidates) {
             val duration = task.durationMinutes.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
+            // LocalTime cannot represent the following midnight as an end boundary.
+            // Keep the entire task inside the current day rather than wrapping its end.
+            if (duration > dayEndMin - earliestMin) {
+                unscheduled += task.id
+                issues += PlanIssue(PlanIssueType.OVERLOADED, task.id, "Not enough same-day time for this task.")
+                continue
+            }
             val preferred = task.preferredStart?.toMinuteOfDay()
             val placement = if (preferred == null) {
                 // Untimed work stays inside the owner's own day window, even when timed items widened it.
