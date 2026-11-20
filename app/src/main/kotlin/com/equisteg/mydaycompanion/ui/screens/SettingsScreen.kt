@@ -68,6 +68,10 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 "speech online. Files leave this app only when you choose to export, back up or share them.",
             modifier = Modifier.testTag("privacy-disclosure"),
         )
+        PrivacyReadinessCard(
+            appLockEnabled = state.security.appLockEnabled,
+            externalSpeechAllowed = state.phoneSpeechService,
+        )
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         HorizontalDivider()
