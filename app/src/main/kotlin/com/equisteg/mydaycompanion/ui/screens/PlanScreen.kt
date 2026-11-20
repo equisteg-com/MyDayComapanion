@@ -344,6 +344,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 onToggle = viewModel::onToggleTask,
                 onEdit = { editingId = it },
                 openRequest = searchRequest,
+                onBatch = viewModel::onBatchEdit,
             )
         }
 
