@@ -61,8 +61,11 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     ) {
         Text("Privacy", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Everything stays on this phone in an encrypted database. MyDayCompanion has no internet " +
-                "permission, no account, no cloud backup and no analytics.",
+            "Plans and saved data live in an encrypted database on this phone. MyDayCompanion " +
+                "does not request internet access and has no account, cloud backup or analytics. " +
+                "If you opt into your phone's speech service, that separate provider may process " +
+                "speech online. Files leave this app only when you choose to export, back up or share them.",
+            modifier = Modifier.testTag("privacy-disclosure"),
         )
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
@@ -90,6 +93,10 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         HorizontalDivider()
         Text("Your data", style = MaterialTheme.typography.titleMedium)
         BackupSection(state, onBackUp = { backupLauncher.launch(viewModel.backupFileName()) }, onRestore = { restoreLauncher.launch(arrayOf("*/*")) })
+        Text("JSON export is readable without a passphrase. Keep it private; encrypted backups use a separate file.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.testTag("export-warning"))
         OutlinedButton(onClick = { exportLauncher.launch("mydaycompanion-export.json") }, enabled = !state.busy) {
             Text("Export all data")
         }
