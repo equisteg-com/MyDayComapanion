@@ -102,7 +102,7 @@ class AgentChatUiTest {
 
         compose.onNodeWithText("Move \"Call Raj\" to Friday 9 October?").assertExists()
         assertEquals(today, runBlocking { graph.tasks.get("a")?.date }, "nothing moves before the tap")
-        compose.onNodeWithTag("suggestion-accept").performClick()
+        compose.onNodeWithTag("suggestion-accept").performScrollTo().performClick()
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("a")?.date } == friday }
         assertNull(vm.state.value.suggestion)
         assertTrue(graph.audit.entries.any { it.action == "tasks.update" })
@@ -217,7 +217,7 @@ class AgentChatUiTest {
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("suggestion")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Move to today: \"Finish slides\"?").assertExists()
         assertEquals(today.minusDays(1), runBlocking { graph.tasks.get("y")?.date })
-        compose.onNodeWithTag("suggestion-accept").performClick()
+        compose.onNodeWithTag("suggestion-accept").performScrollTo().performClick()
         compose.waitUntil(5_000) { runBlocking { graph.tasks.get("y")?.date } == today }
         compose.waitUntil(5_000) { compose.onAllNodes(hasTestTag("rollover")).fetchSemanticsNodes().isEmpty() }
     }
