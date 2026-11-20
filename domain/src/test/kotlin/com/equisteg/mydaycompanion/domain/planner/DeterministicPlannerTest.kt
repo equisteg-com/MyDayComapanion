@@ -176,6 +176,16 @@ class DeterministicPlannerTest {
     }
 
     @Test
+    fun `validator rejects a plan that silently shortens a task`() {
+        val req = request(listOf(task("report", 60)))
+        val valid = planner.plan(req)
+        val changed = valid.copy(blocks = valid.blocks.map {
+            if (it.refId == "report") it.copy(end = it.start.plusMinutes(1)) else it
+        })
+        assertTrue(PlanValidator.validate(changed, req).any { it.contains("duration differs") })
+    }
+
+    @Test
     fun `validator rejects wrong date, extra events and duplicate unscheduled IDs`() {
         val req = request(listOf(task("a", 30)), listOf(meeting("meeting", LocalTime.of(11, 0))))
         val valid = planner.plan(req)
