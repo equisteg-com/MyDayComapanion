@@ -21,6 +21,7 @@ object PlanValidator {
             if (sorted[i].start < sorted[i - 1].end) errors += "Task blocks overlap: ${sorted[i - 1].refId} and ${sorted[i].refId}"
         }
 
+        val taskById = request.tasks.associateBy(Task::id)
         val events = plan.blocks.filter { it.kind == BlockKind.FIXED_EVENT }
         val expectedEvents = request.fixedEvents.filter { it.date == request.date }
         val expectedEventIds = expectedEvents.map { it.id }.toSet()
@@ -36,8 +37,7 @@ object PlanValidator {
             if (request.notBefore != null && t.start < request.notBefore) errors += "Task ${t.refId} starts in the past"
             if (!t.end.isAfter(t.start)) errors += "Task ${t.refId} has no duration"
             // A model must not squeeze an hour of work into a one-minute block.
-            val requestedDuration = request.tasks.firstOrNull { it.id == t.refId }
-                ?.durationMinutes?.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
+            val requestedDuration = taskById[t.refId]?.durationMinutes?.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
             if (requestedDuration != null && end - start != requestedDuration) {
                 errors += "Task ${t.refId} duration differs from the request"
             }
