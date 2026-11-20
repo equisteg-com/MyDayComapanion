@@ -72,8 +72,10 @@ fun HistoryScreen(state: UiState, onFilter: (HistoryFilter) -> Unit, onKeepDays:
     val shown = state.shownHistory
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Text("History", style = MaterialTheme.typography.titleLarge)
-            Text("Everything you and your agent did on this phone. It never contains what your tasks or memories say.", style = MaterialTheme.typography.bodySmall)
+            HistoryPremiumHero(shown.size)
+            Text("Audit your actions. The log records outcomes, not the text of tasks or memories.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
