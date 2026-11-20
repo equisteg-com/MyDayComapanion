@@ -107,6 +107,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
 
         item {
+            WeekOverview(
+                selectedDate = state.selectedDate,
+                tasks = tasks,
+                onSelectDate = viewModel::selectDate,
+            )
+        }
+
+        item {
             Card(
                 Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -138,6 +146,26 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         ) { Text("Plan it") }
                         if (viewModel.voiceEnabled) TalkButton(state, viewModel)
                         QuickAsks(enabled = !state.busy, onAsk = viewModel::onAsk)
+                    }
+                    Text("Quick capture · choose an example, then edit it",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(
+                        Modifier.horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        listOf(
+                            "Call a friend tomorrow at 4pm for 15 minutes",
+                            "Finish report today by 5pm, 60 minutes",
+                            "Walk at 7am for 30 minutes",
+                        ).forEachIndexed { index, example ->
+                            AssistChip(
+                                onClick = { viewModel.onInputChange(example) },
+                                label = { Text(listOf("Call", "Deadline", "Routine idea")[index]) },
+                                enabled = !state.busy,
+                                modifier = Modifier.testTag("capture-example-$index"),
+                            )
+                        }
                     }
                     state.message?.let {
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer) {
@@ -237,6 +265,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 Text("No day yet", style = MaterialTheme.typography.titleMedium)
                 TaskRows(backlog, viewModel::onToggleTask) { editingId = it }
             }
+        }
+
+        item {
+            TaskDiscovery(
+                allTasks = tasks,
+                onToggle = viewModel::onToggleTask,
+                onEdit = { editingId = it },
+            )
         }
 
         item { InsightsCard(insights) }
