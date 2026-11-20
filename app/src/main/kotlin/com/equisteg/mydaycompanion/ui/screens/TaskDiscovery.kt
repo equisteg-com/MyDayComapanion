@@ -15,6 +15,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -37,8 +38,12 @@ fun TaskDiscovery(
     allTasks: List<Task>,
     onToggle: (String) -> Unit,
     onEdit: (String) -> Unit,
+    openRequest: Int = 0,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(openRequest) {
+        if (openRequest > 0) expanded = true
+    }
     var query by rememberSaveable { mutableStateOf("") }
     var statusName by rememberSaveable { mutableStateOf(TaskStateFilter.ALL.name) }
     var priorityName by rememberSaveable { mutableStateOf("ANY") }
