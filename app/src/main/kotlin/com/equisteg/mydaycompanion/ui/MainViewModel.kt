@@ -1048,7 +1048,14 @@ class MainViewModel(
 
     /** The owner saved the edit form. Every field is sent, so the approval covers exactly what was on screen. */
     fun onSaveTask(task: Task) = launchBusy {
-        runUserAction(ProposedAction("tasks.update", UpdateTaskTool.args(task)), "Save changes?", "This is a personal task.")
+        // Retain the original date for correctly rebuilding BOTH days after a move or undo.
+        // Using basedOn also prevents a delayed personal-task approval overwriting newer edits.
+        val previous = services.tasks.get(task.id)
+        runUserAction(
+            ProposedAction("tasks.update", UpdateTaskTool.args(task)),
+            "Save changes?", "This is a personal task.",
+            basedOn = previous,
+        )
     }
 
     fun onDeleteTask(taskId: String) = launchBusy {
@@ -1601,7 +1608,9 @@ class MainViewModel(
                     return
                 }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
-                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
+                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) {
+                    replanAfter(pending.action, previousDate = pending.basedOn?.date)
+                }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 if (pending.action.toolId.startsWith("memory.")) loadMemories()
                 // Reload after any restore that ran, so the screens never show settings the stores no longer hold.
@@ -1666,13 +1675,13 @@ class MainViewModel(
      * An everyday action the owner started: it runs at once unless the policy asks for approval
      * (a personal task), in which case the owner's chosen verification runs first.
      */
-    private suspend fun runUserAction(action: ProposedAction, title: String, personalBody: String) {
+    private suspend fun runUserAction(action: ProposedAction, title: String, personalBody: String, basedOn: Task? = null) {
         when (val r = services.orchestrator.execute(action, Requester.USER)) {
-            is ExecutionResult.Done -> replanAfter(action)
+            is ExecutionResult.Done -> replanAfter(action, previousDate = basedOn?.date)
             is ExecutionResult.NeedsConfirmation -> {
                 val s = _state.value
                 val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
-                advance(PendingConfirmation(action, r.actionFingerprint, title, personalBody, steps))
+                advance(PendingConfirmation(action, r.actionFingerprint, title, personalBody, steps, basedOn = basedOn))
             }
             else -> _state.update { it.copy(message = describe(r)) }
         }
@@ -1691,11 +1700,15 @@ class MainViewModel(
         }
     }
 
-    /** Rebuilds the shown day, and the day a task was moved to. */
-    private suspend fun replanAfter(action: ProposedAction) {
-        replan()
-        val movedTo = ((action.args["date"] ?: action.args["to"]) as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        if (movedTo != null && movedTo != _state.value.selectedDate) replan(movedTo)
+    /** Rebuilds each distinct affected day, including the old day after moving or undoing a task. */
+    private suspend fun replanAfter(action: ProposedAction, previousDate: LocalDate? = null) {
+        val movedTo = ((action.args["date"] ?: action.args["to"]) as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val affected = linkedSetOf(_state.value.selectedDate)
+        if (previousDate != null) affected.add(previousDate)
+        if (movedTo != null) affected.add(movedTo)
+        affected.forEach { replan(it) }
     }
 
     private suspend fun replan(date: LocalDate = _state.value.selectedDate) {
