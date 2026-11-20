@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
@@ -59,6 +61,8 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val statusById = tasks.associate { it.id to it.status }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showWeek by rememberSaveable { mutableStateOf(false) }
+    var showExamples by rememberSaveable { mutableStateOf(false) }
     val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
     val backlog = tasks.filter { it.date == null }.sortedBy { it.createdAt }
     // Ticks each minute, so Now / Next, the greeting and "today" stay right while My day is open.
@@ -89,9 +93,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         modifier = Modifier.testTag("day-title"),
                     )
                     Text(
-                        if (isToday) "Today · ${state.selectedDate.format(dayFormat)}" else state.selectedDate.format(dayFormat),
+                        (if (isToday) "Today · ${state.selectedDate.format(dayFormat)}" else state.selectedDate.format(dayFormat)) +
+                            if (showWeek) " · Hide week" else " · Show week",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("week-toggle")
+                            .clickable(role = Role.Button, onClickLabel = if (showWeek) "Hide week overview" else "Show week overview") {
+                                showWeek = !showWeek
+                            },
                     )
                 }
                 IconButton(onClick = { viewModel.selectDate(state.selectedDate.minusDays(1)) }, modifier = Modifier.testTag("day-previous")) {
@@ -106,7 +115,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
-        item {
+        if (showWeek) item {
             WeekOverview(
                 selectedDate = state.selectedDate,
                 tasks = tasks,
@@ -146,8 +155,15 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         ) { Text("Plan it") }
                         if (viewModel.voiceEnabled) TalkButton(state, viewModel)
                         QuickAsks(enabled = !state.busy, onAsk = viewModel::onAsk)
+                        AssistChip(
+                            onClick = { showExamples = !showExamples },
+                            label = { Text(if (showExamples) "Hide examples" else "Examples") },
+                            enabled = !state.busy,
+                            modifier = Modifier.testTag("capture-examples-toggle"),
+                        )
                     }
-                    Text("Quick capture · choose an example, then edit it",
+                    if (showExamples) {
+                        Text("Quick capture · choose an example, then edit it",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Row(
@@ -166,6 +182,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                                 modifier = Modifier.testTag("capture-example-$index"),
                             )
                         }
+                    }
                     }
                     state.message?.let {
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer) {
