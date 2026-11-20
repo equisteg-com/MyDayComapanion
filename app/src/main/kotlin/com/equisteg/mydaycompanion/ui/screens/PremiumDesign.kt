@@ -190,7 +190,7 @@ fun SettingsPremiumHero() =
         title = "Your space.",
         subtitle = "Appearance, privacy, security, voice and backups.",
         icon = Icons.Filled.Settings,
-        footnote = "MyDayCompanion 0.2.0 · Local-first",
+        footnote = "MyDayCompanion 0.3.0 · Local-first",
     )
 
 @Composable
