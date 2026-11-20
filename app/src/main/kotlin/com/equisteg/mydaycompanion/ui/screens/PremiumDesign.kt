@@ -138,6 +138,16 @@ fun PlannerCommandCenter(
                     enabled = !busy,
                     modifier = Modifier.testTag("premium-week-summary"),
                 ) { Text("Weekly insight") }
+                OutlinedButton(
+                    onClick = { onAsk("explain my plan") },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("premium-explain-plan"),
+                ) { Text("Explain plan") }
+                OutlinedButton(
+                    onClick = { onAsk("show conflicts") },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("premium-explain-conflicts"),
+                ) { Text("Conflicts") }
             }
         }
     }
