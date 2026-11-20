@@ -286,6 +286,21 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
+        if (saved != null && saved.blocks.isNotEmpty()) {
+            item {
+                VisualRescheduler(
+                    plan = saved,
+                    tasks = tasks,
+                    preferences = state.preferences,
+                    busy = state.busy,
+                    onMove = { previous, updated ->
+                        lastQuickMove = ReversibleMove(previous, updated)
+                        viewModel.onSaveTask(updated)
+                    },
+                )
+            }
+        }
+
         if (dayTasks.isNotEmpty()) {
             item {
                 Text("Tasks", style = MaterialTheme.typography.titleMedium)
