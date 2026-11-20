@@ -48,8 +48,14 @@ fun RoutinesScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Routines", style = MaterialTheme.typography.titleLarge)
-        Text("Things you do again and again. Each one is added to your day on the days it is due, and planned around everything else.")
+        RoutinePremiumHero(
+            active = routines.count { it.enabled },
+            total = routines.size,
+        )
+        Text("Your automations", style = MaterialTheme.typography.titleMedium)
+        Text("Create once, repeat on schedule. Pause a routine or switch reminders anytime.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         if (routines.isEmpty()) {
