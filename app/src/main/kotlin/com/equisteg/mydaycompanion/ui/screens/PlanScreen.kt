@@ -88,7 +88,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     if (state.proposal != null) shownProposal = state.proposal
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().testTag("plan-list"),
         state = listState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
