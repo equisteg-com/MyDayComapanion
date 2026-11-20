@@ -63,6 +63,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val plan by viewModel.plan.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+    val routines by viewModel.routines.collectAsStateWithLifecycle()
     val statusById = tasks.associate { it.id to it.status }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showWeek by rememberSaveable { mutableStateOf(false) }
@@ -152,6 +153,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 today = today,
                 tasks = tasks,
                 onSelectDate = viewModel::selectDate,
+                routines = routines,
             )
         }
 
