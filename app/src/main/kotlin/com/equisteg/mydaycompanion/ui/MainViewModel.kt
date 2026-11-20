@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.equisteg.mydaycompanion.AppServices
 import com.equisteg.mydaycompanion.domain.agent.AgentCommand
+import com.equisteg.mydaycompanion.domain.agent.ClarificationGuidance
 import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
 import com.equisteg.mydaycompanion.domain.agent.AgentProposal
 import com.equisteg.mydaycompanion.domain.agent.AgentReplies
@@ -456,7 +457,9 @@ class MainViewModel(
         }
         when (val p = services.orchestrator.propose(text)) {
             is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = null, suggestion = null, choice = null) }
-            is AgentProposal.NotUnderstood -> _state.update { it.copy(message = p.reason) }
+            is AgentProposal.NotUnderstood -> _state.update {
+                it.copy(message = p.reason + "\n" + ClarificationGuidance.forInput(text))
+            }
             AgentProposal.Empty -> Unit
         }
     }
