@@ -1,6 +1,8 @@
 package com.equisteg.mydaycompanion.domain.productivity
 
 import com.equisteg.mydaycompanion.domain.model.Priority
+import com.equisteg.mydaycompanion.domain.model.Routine
+import com.equisteg.mydaycompanion.domain.model.RoutineFrequency
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import java.time.Instant
@@ -79,6 +81,28 @@ class PremiumOperationsTest {
         assertEquals(2,day.planned)
         assertEquals(1,day.done)
         assertEquals(1,day.overdueOpen)
+    }
+
+    @Test fun `calendar previews upcoming routines and never doubles materialized or cancelled instances`() {
+        val routine=Routine(id="walk",title="Walk",frequency=RoutineFrequency.DAILY,
+            preferredStart=LocalTime.of(7,0),durationMinutes=30,createdAt=created)
+        val target=today.plusDays(1)
+        val empty=MonthOverview.grid(YearMonth.from(target),emptyList(),today,Locale.UK,listOf(routine))
+            .first { it.date == target }
+        assertEquals(1,empty.planned)
+        assertEquals(1,empty.projectedRoutines)
+
+        val generated=task("walk-instance",target).copy(routineId="walk")
+        val actual=MonthOverview.grid(YearMonth.from(target),listOf(generated),today,Locale.UK,listOf(routine))
+            .first { it.date == target }
+        assertEquals(1,actual.planned)
+        assertEquals(0,actual.projectedRoutines)
+
+        val skipped=generated.copy(status=TaskStatus.CANCELLED)
+        val cancelled=MonthOverview.grid(YearMonth.from(target),listOf(skipped),today,Locale.UK,listOf(routine))
+            .first { it.date == target }
+        assertEquals(0,cancelled.planned)
+        assertEquals(0,cancelled.projectedRoutines)
     }
 
     @Test fun `coach recommends overdue work and uses fixed task counts`() {
