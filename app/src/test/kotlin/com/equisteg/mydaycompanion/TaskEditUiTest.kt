@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import com.equisteg.mydaycompanion.domain.ai.text.NumericDateOrder
 import com.equisteg.mydaycompanion.domain.model.Task
@@ -60,6 +61,8 @@ class TaskEditUiTest {
         compose.onNodeWithTag("onboarding-next").performScrollTo().performClick()
         compose.onNodeWithTag("onboarding-start").performScrollTo().performClick()
 
+        waitFor(viewModel, "onboarding finished") { !viewModel.state.value.showOnboarding }
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("input"))
         waitFor(viewModel, "main screen") { compose.onAllNodes(hasTestTag("input")).fetchSemanticsNodes().isNotEmpty() }
         val saved = runBlocking { graph.preferences.get() }
         assertTrue(saved.onboardingDone)
@@ -72,6 +75,10 @@ class TaskEditUiTest {
         runBlocking { graph.tasks.upsert(listOf(task())) }
         val viewModel = MainViewModel(TestServices(graph), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
+        waitFor(viewModel, "task data") { viewModel.tasks.value.any { it.id == "t1" } }
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-t1"))
+        waitFor(viewModel, "task data") { viewModel.tasks.value.any { it.id == "t1" } }
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-t1"))
         waitFor(viewModel, "task list") { compose.onAllNodes(hasTestTag("task-t1")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("toggle-t1").performScrollTo().performClick()
         waitFor(viewModel, "task done") { runBlocking { graph.tasks.get("t1")?.status } == TaskStatus.DONE }
@@ -140,6 +147,8 @@ class TaskEditUiTest {
         }
         val viewModel = MainViewModel(TestServices(graph), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
+        waitFor(viewModel, "subtask data") { viewModel.tasks.value.any { it.id == "s1" } }
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-s1"))
         waitFor(viewModel, "task list") { compose.onAllNodes(hasTestTag("task-s1")).fetchSemanticsNodes().isNotEmpty() }
 
         viewModel.onDeleteTask("t1")
