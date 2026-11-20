@@ -80,7 +80,13 @@ class UpdateTaskTool(private val tasks: TaskRepository, private val clock: Clock
             updatedAt = now,
         )
         val moved = if (task.parentId == null && task.date != e.date) {
-            tasks.children(task.id).map { it.copy(date = e.date, updatedAt = now) }
+            tasks.children(task.id).map { child ->
+                child.copy(
+                    date = e.date,
+                    deadline = child.deadline?.let { due -> e.date?.atTime(due.toLocalTime()) },
+                    updatedAt = now,
+                )
+            }
         } else {
             emptyList()
         }
