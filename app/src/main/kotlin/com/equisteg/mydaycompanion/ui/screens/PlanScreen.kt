@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -33,8 +34,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -50,6 +53,7 @@ import com.equisteg.mydaycompanion.domain.model.BlockKind
 import com.equisteg.mydaycompanion.domain.tools.RollOverTasksTool
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.launch
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val weekdayFormat = DateTimeFormatter.ofPattern("EEEE")
@@ -63,6 +67,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
     var showWeek by rememberSaveable { mutableStateOf(false) }
     var showExamples by rememberSaveable { mutableStateOf(false) }
+    var searchRequest by rememberSaveable { mutableIntStateOf(0) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
     val backlog = tasks.filter { it.date == null }.sortedBy { it.createdAt }
     // Ticks each minute, so Now / Next, the greeting and "today" stay right while My day is open.
@@ -81,9 +88,13 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
+        state = listState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item {
+            PlanPremiumHero(state.selectedDate.format(dayFormat))
+        }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -115,6 +126,28 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
+        item {
+            PlannerCommandCenter(
+                onWeek = {
+                    showWeek = !showWeek
+                    if (showWeek) scope.launch { listState.animateScrollToItem(4) }
+                },
+                onFind = {
+                    searchRequest++
+                    scope.launch { listState.animateScrollToItem(3) }
+                },
+                onReplan = viewModel::onReplan,
+                busy = state.busy,
+            )
+        }
+        item {
+            TaskDiscovery(
+                allTasks = tasks,
+                onToggle = viewModel::onToggleTask,
+                onEdit = { editingId = it },
+                openRequest = searchRequest,
+            )
+        }
         if (showWeek) item {
             WeekOverview(
                 selectedDate = state.selectedDate,
@@ -282,14 +315,6 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 Text("No day yet", style = MaterialTheme.typography.titleMedium)
                 TaskRows(backlog, viewModel::onToggleTask) { editingId = it }
             }
-        }
-
-        item {
-            TaskDiscovery(
-                allTasks = tasks,
-                onToggle = viewModel::onToggleTask,
-                onEdit = { editingId = it },
-            )
         }
 
         item { InsightsCard(insights) }
