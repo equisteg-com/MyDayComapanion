@@ -135,19 +135,15 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 },
                 onFind = {
                     searchRequest++
-                    scope.launch { listState.animateScrollToItem(3) }
+                    // Explorer is just above Insights, out of the way of voice and proposals.
+                    scope.launch {
+                        val explorerIndex = (listState.layoutInfo.totalItemsCount - 2).coerceAtLeast(0)
+                        listState.animateScrollToItem(explorerIndex)
+                    }
                 },
                 onReplan = viewModel::onReplan,
                 onAsk = viewModel::onAsk,
                 busy = state.busy,
-            )
-        }
-        item {
-            TaskDiscovery(
-                allTasks = tasks,
-                onToggle = viewModel::onToggleTask,
-                onEdit = { editingId = it },
-                openRequest = searchRequest,
             )
         }
         if (showWeek) item {
@@ -339,6 +335,15 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 Text("No day yet", style = MaterialTheme.typography.titleMedium)
                 TaskRows(backlog, viewModel::onToggleTask) { editingId = it }
             }
+        }
+
+        item {
+            TaskDiscovery(
+                allTasks = tasks,
+                onToggle = viewModel::onToggleTask,
+                onEdit = { editingId = it },
+                openRequest = searchRequest,
+            )
         }
 
         item { InsightsCard(insights) }
