@@ -195,26 +195,10 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         )
                     }
                     if (showExamples) {
-                        Text("Quick capture · choose an example, then edit it",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Row(
-                        Modifier.horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        listOf(
-                            "Call a friend tomorrow at 4pm for 15 minutes",
-                            "Finish report today by 5pm, 60 minutes",
-                            "Walk at 7am for 30 minutes",
-                        ).forEachIndexed { index, example ->
-                            AssistChip(
-                                onClick = { viewModel.onInputChange(example) },
-                                label = { Text(listOf("Call", "Deadline", "Routine idea")[index]) },
-                                enabled = !state.busy,
-                                modifier = Modifier.testTag("capture-example-$index"),
-                            )
-                        }
-                    }
+                        CaptureTemplateGallery(
+                            enabled = !state.busy,
+                            onChoose = viewModel::onInputChange,
+                        )
                     }
                     state.message?.let {
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer) {
@@ -349,6 +333,21 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
 
         item { InsightsCard(insights) }
+
+        item {
+            ActionableProgressCard(
+                tasks = tasks,
+                selectedDate = today,
+                busy = state.busy,
+                onDeadlines = { viewModel.onAsk("show my deadlines") },
+                onRollOver = viewModel::onRollOver,
+                onFocus = { viewModel.onStartFocus(25, null) },
+                onPlanNextDay = {
+                    viewModel.selectDate(today.plusDays(1))
+                    scope.launch { listState.animateScrollToItem(0) }
+                },
+            )
+        }
     }
 
     VoiceConversation(state, viewModel)
