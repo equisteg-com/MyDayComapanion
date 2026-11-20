@@ -68,6 +68,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     var showWeek by rememberSaveable { mutableStateOf(false) }
     var showExamples by rememberSaveable { mutableStateOf(false) }
     var searchRequest by rememberSaveable { mutableIntStateOf(0) }
+    var lastQuickMove by remember { mutableStateOf<ReversibleMove?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
@@ -130,7 +131,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             PlannerCommandCenter(
                 onWeek = {
                     showWeek = !showWeek
-                    if (showWeek) scope.launch { listState.animateScrollToItem(4) }
+                    if (showWeek) scope.launch { listState.animateScrollToItem(3) }
                 },
                 onFind = {
                     searchRequest++
@@ -310,6 +311,28 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 TaskRows(dayTasks, viewModel::onToggleTask) { editingId = it }
             }
         }
+        item {
+            val undo = lastQuickMove?.takeIf {
+                it.original.date == state.selectedDate &&
+                    it.canUndo(tasks.firstOrNull { current -> current.id == it.original.id })
+            }
+            QuickReschedule(
+                day = state.selectedDate,
+                tasks = dayTasks,
+                canUndo = undo != null,
+                busy = state.busy,
+                onMove = { task ->
+                    val moved = moveToNextDay(task, state.selectedDate)
+                    lastQuickMove = ReversibleMove(task, moved)
+                    viewModel.onSaveTask(moved)
+                },
+                onUndo = {
+                    undo?.let { viewModel.onSaveTask(it.original) }
+                    lastQuickMove = null
+                },
+            )
+        }
+
         if (backlog.isNotEmpty()) {
             item {
                 Text("No day yet", style = MaterialTheme.typography.titleMedium)
