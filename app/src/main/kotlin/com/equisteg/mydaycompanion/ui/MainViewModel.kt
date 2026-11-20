@@ -477,6 +477,10 @@ class MainViewModel(
             AgentCommand.DaySummary -> chat(owner = false, AgentReplies.daySummary(services.tasks.all(), today))
             AgentCommand.Deadlines -> chat(owner = false, AgentReplies.deadlines(services.tasks.all(), today, nowTime()))
             AgentCommand.WeekSummary -> chat(owner = false, AgentReplies.weekSummary(services.tasks.all(), today))
+            AgentCommand.ExplainPlan -> chat(owner = false,
+                AgentReplies.explainPlan(services.plans.get(_state.value.selectedDate), _state.value.preferences))
+            AgentCommand.ExplainConflicts -> chat(owner = false,
+                AgentReplies.explainConflicts(services.plans.get(_state.value.selectedDate)))
             AgentCommand.RollOver -> offerRollOver()
             is AgentCommand.Focus -> {
                 val match = command.query?.let { TaskMatcher.find(it, services.tasks.all(), today) }
