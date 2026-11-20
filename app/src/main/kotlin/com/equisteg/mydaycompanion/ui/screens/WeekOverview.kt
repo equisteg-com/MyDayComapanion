@@ -34,13 +34,18 @@ data class WeekDaySummary(val date: LocalDate, val planned: Int, val done: Int)
 /** Computation is independent from the UI and omits cancelled routine instances. */
 fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>): List<WeekDaySummary> {
     val monday = selectedDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    val counts = tasks.asSequence()
-        .filter { it.status != TaskStatus.CANCELLED && it.date != null }
-        .groupBy { it.date!! }
+    val planned = IntArray(7)
+    val done = IntArray(7)
+    for (task in tasks) {
+        if (task.status == TaskStatus.CANCELLED) continue
+        val date = task.date ?: continue
+        val index = java.time.temporal.ChronoUnit.DAYS.between(monday, date).toInt()
+        if (index !in 0..6) continue
+        planned[index]++
+        if (task.status == TaskStatus.DONE) done[index]++
+    }
     return (0..6).map { offset ->
-        val date = monday.plusDays(offset.toLong())
-        val items = counts[date].orEmpty()
-        WeekDaySummary(date, items.size, items.count { it.status == TaskStatus.DONE })
+        WeekDaySummary(monday.plusDays(offset.toLong()), planned[offset], done[offset])
     }
 }
 
