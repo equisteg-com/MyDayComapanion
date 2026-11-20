@@ -42,17 +42,22 @@ class PremiumDesignUiTest {
         var weeks = 0
         var searches = 0
         var replans = 0
+        val questions = mutableListOf<String>()
         compose.setContent { MyDayCompanionTheme {
             PlannerCommandCenter(
                 onWeek = { weeks++ },
                 onFind = { searches++ },
                 onReplan = { replans++ },
+                onAsk = { questions += it },
                 busy = false,
             )
         } }
         compose.onNodeWithTag("premium-open-week").performClick()
         compose.onNodeWithTag("premium-open-search").performClick()
         compose.onNodeWithTag("premium-replan").performClick()
+        compose.onNodeWithTag("premium-deadlines").performClick()
+        compose.onNodeWithTag("premium-week-summary").performClick()
+        assertEquals(listOf("show my deadlines", "week summary"), questions)
         assertEquals(1, weeks)
         assertEquals(1, searches)
         assertEquals(1, replans)
