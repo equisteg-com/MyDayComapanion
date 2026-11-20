@@ -48,6 +48,10 @@ object BatchEditPlanner {
                 task.status != TaskStatus.CANCELLED) {
                 "Personal tasks, steps, routines and skipped tasks require individual review."
             }
+            require(action != BatchEditAction.MOVE_TOMORROW ||
+                allTasks.none { it.parentId == task.id && it.personal }) {
+                "A task with private steps must be moved individually."
+            }
             val edited = when (action) {
                 BatchEditAction.COMPLETE -> {
                     require(task.status == TaskStatus.OPEN) { "Choose open tasks to complete." }
