@@ -108,6 +108,36 @@ class TaskEditToolsTest {
     }
 
     @Test
+    fun `private children require credential-class approval for parent move delete and rollover`() = runTest {
+        val g = TestGraph()
+        val root = g.seed(personal = false)
+        val child = Task(id = "private-step", title = "Personal details", parentId = root.id,
+            date = day, personal = true, createdAt = g.clock.instant(),
+            deadline = day.atTime(16, 30))
+        g.tasks.upsert(listOf(child))
+
+        val update = ProposedAction("tasks.update", UpdateTaskTool.args(root.copy(date = day.plusDays(1))))
+        val approval = assertIs<ExecutionResult.NeedsConfirmation>(
+            g.orchestrator.execute(update, Requester.USER))
+        assertTrue(approval.personal, "a parent move implicitly affects a protected child")
+        assertEquals(day, g.tasks.get(child.id)?.date, "must not edit before approval")
+        assertIs<ExecutionResult.Done>(
+            g.orchestrator.execute(update, Requester.USER, UserConfirmation(approval.actionFingerprint)))
+        assertEquals(day.plusDays(1), g.tasks.get(child.id)?.date)
+        assertEquals(day.plusDays(1).atTime(16, 30), g.tasks.get(child.id)?.deadline)
+
+        val delete = ProposedAction("tasks.delete", idArgs("taskId", root.id))
+        assertTrue(assertIs<ExecutionResult.NeedsConfirmation>(
+            g.orchestrator.execute(delete, Requester.USER)).personal)
+
+        val rollover = ProposedAction("tasks.rollOver",
+            RollOverTasksTool.args(day.plusDays(2), listOf(g.tasks.get(root.id)!!)))
+        assertTrue(assertIs<ExecutionResult.NeedsConfirmation>(
+            g.orchestrator.execute(rollover, Requester.USER)).personal)
+        assertEquals(day.plusDays(1), g.tasks.get(child.id)?.date)
+    }
+
+    @Test
     fun `malformed task edits are rejected`() = runTest {
         val g = TestGraph()
         val t = g.seed()
