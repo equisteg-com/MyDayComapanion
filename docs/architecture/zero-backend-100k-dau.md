@@ -22,6 +22,15 @@ Do **not** equate 100k DAU with 100k requests/second: DAU is a population metric
 5. Distribute internal test APKs using controlled tester channels. **Do not promise unlimited zero-card public APK distribution**. Official Play Console registration is US$25 once, generally with a credit/debit payment method. Android's ongoing developer-verification and distribution rules must be revisited for the target geographies.
 6. Never use third-party free tiers as if they guarantee 100k-user bandwidth or SLA. Design signed release and update distribution before public scaling.
 
+## Distribution-scale reality: 10 million to 100 million downloads
+A public-download simulation at these volumes is **not possible at zero cost** and must not be run against GitHub, Google Play or third-party infrastructure without permission. A 25 MB APK downloaded by 10 million people is roughly **250 TB** transferred; at 100 million downloads it is **2.5 PB** (decimal units). Actual size varies with ABI, splits, resources, and compression. This bandwidth is handled by the chosen distribution platform, **not** by the offline app.
+
+- Validate release delivery on a tiny authorized tester cohort, then let the store/CDN operator manage scaling according to its rules; don't launch tens of millions of scripted downloads.
+- Preserve SHA-256 checksums, verified signing certificates, version-code upgrades and rollback-ready releases. The GitHub Actions debug APK is **for development/testing only**, not a signed production app.
+- Verify Play developer-registration and account/payment requirements before promising completely no-card distribution.
+- Data transfer and download counts must never be represented as active-app-user concurrency; downloads, DAU, and peak simultaneous sessions are different metrics.
+- The repository includes a **100,000-record bounded local search test** and **100,000 sequential offline planner operations** to verify local logic. Neither is 100,000 simultaneous phones, and neither verifies release distribution, data restoration on 100,000 devices, or real-world ANR rates.
+
 ## Device-level test gates (actual evidence required)
 - Baseline devices: Android API 26, 30, 34, 36; low-memory and common midrange physical devices.
 - Startup: measure cold and warm start (p50/p95); target <2.5 s cold on midrange, investigate slow-tier outliers.
