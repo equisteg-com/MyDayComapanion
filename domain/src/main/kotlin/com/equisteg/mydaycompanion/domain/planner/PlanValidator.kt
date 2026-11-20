@@ -35,6 +35,12 @@ object PlanValidator {
             if (start < window.first || end > window.last) errors += "Task ${t.refId} is outside the day window"
             if (request.notBefore != null && t.start < request.notBefore) errors += "Task ${t.refId} starts in the past"
             if (!t.end.isAfter(t.start)) errors += "Task ${t.refId} has no duration"
+            // A model must not squeeze an hour of work into a one-minute block.
+            val requestedDuration = request.tasks.firstOrNull { it.id == t.refId }
+                ?.durationMinutes?.coerceIn(Task.MIN_DURATION_MINUTES, Task.MAX_DURATION_MINUTES)
+            if (requestedDuration != null && end - start != requestedDuration) {
+                errors += "Task ${t.refId} duration differs from the request"
+            }
             for (event in events) {
                 if (t.start < event.end && event.start < t.end) errors += "Task ${t.refId} overlaps fixed event ${event.refId}"
             }
