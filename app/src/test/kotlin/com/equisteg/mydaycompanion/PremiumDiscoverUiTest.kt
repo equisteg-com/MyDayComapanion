@@ -19,6 +19,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Instant
 import java.time.LocalDate
+import java.util.Locale
 import kotlin.test.assertEquals
 
 @RunWith(RobolectricTestRunner::class)
@@ -46,17 +47,23 @@ class PremiumDiscoverUiTest {
         compose.onNodeWithTag("task-search-count").assertTextContains("1 matching tasks")
     }
 
-    @Test fun `weekly overview uses monday start and keeps cancelled entries out`() {
+    @Test fun `weekly overview uses UK monday start and keeps cancelled entries out`() {
         val monday = date.minusDays(4)
         val tasks = listOf(task("a", "Monday", date = monday),
             task("b", "Finished", TaskStatus.DONE),
             task("c", "Skipped", TaskStatus.CANCELLED))
-        val week = weekSummaries(date, tasks)
+        val week = weekSummaries(date, tasks, Locale.UK)
         assertEquals(7, week.size)
         assertEquals(monday, week.first().date)
         assertEquals(1, week.first().planned)
         assertEquals(1, week[4].planned)
         assertEquals(1, week[4].done)
+    }
+
+    @Test fun `US locale starts its week on Sunday`() {
+        val week = weekSummaries(date, emptyList(), Locale.US)
+        assertEquals(LocalDate.of(2026, 11, 15), week.first().date)
+        assertEquals(date, week[5].date)
     }
 
     @Test fun `week navigation selects another date without changing tasks`() {
