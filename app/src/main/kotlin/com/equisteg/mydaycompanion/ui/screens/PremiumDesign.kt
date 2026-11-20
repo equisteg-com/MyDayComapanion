@@ -50,7 +50,7 @@ fun PremiumPageHero(
         modifier.fillMaxWidth()
             .clip(MaterialTheme.shapes.extraLarge)
             .background(Brush.linearGradient(listOf(colors.primary, colors.secondary)))
-            .padding(horizontal = 20.dp, vertical = 20.dp)
+            .padding(horizontal = 16.dp, vertical = 12.dp)
             .testTag("premium-header-${section.lowercase()}"),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -64,12 +64,12 @@ fun PremiumPageHero(
             Text(
                 title,
                 color = colors.onPrimary,
-                style = MaterialTheme.typography.headlineMedium,
+                style = MaterialTheme.typography.headlineSmall,
             )
             Text(
                 subtitle,
                 color = colors.onPrimary.copy(alpha = 0.92f),
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.bodySmall,
             )
             if (footnote != null) {
                 Text(
@@ -84,7 +84,7 @@ fun PremiumPageHero(
                 imageVector = icon,
                 contentDescription = null,
                 tint = colors.onPrimary,
-                modifier = Modifier.padding(14.dp),
+                modifier = Modifier.padding(10.dp),
             )
         }
     }
@@ -107,13 +107,10 @@ fun PlannerCommandCenter(
         shape = MaterialTheme.shapes.extraLarge,
         modifier = Modifier.fillMaxWidth().testTag("planner-command-center"),
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text("Command center", style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Your day, your way. Open the week, find any task, or rebuild a schedule around what's changed.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("COMMAND CENTER  ·  Offline tools",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(
                 Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
