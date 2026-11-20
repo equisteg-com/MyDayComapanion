@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -32,14 +34,17 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
@@ -48,6 +53,7 @@ import com.equisteg.mydaycompanion.domain.model.BlockKind
 import com.equisteg.mydaycompanion.domain.tools.RollOverTasksTool
 import com.equisteg.mydaycompanion.ui.MainViewModel
 import java.time.format.DateTimeFormatter
+import kotlinx.coroutines.launch
 
 private val dayFormat = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val weekdayFormat = DateTimeFormatter.ofPattern("EEEE")
@@ -57,8 +63,15 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val plan by viewModel.plan.collectAsStateWithLifecycle()
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
+    val routines by viewModel.routines.collectAsStateWithLifecycle()
     val statusById = tasks.associate { it.id to it.status }
     var editingId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showWeek by rememberSaveable { mutableStateOf(false) }
+    var showExamples by rememberSaveable { mutableStateOf(false) }
+    var searchRequest by rememberSaveable { mutableIntStateOf(0) }
+    var lastQuickMove by remember { mutableStateOf<ReversibleMove?>(null) }
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     val dayTasks = tasks.filter { it.date == state.selectedDate }.sortedBy { it.createdAt }
     val backlog = tasks.filter { it.date == null }.sortedBy { it.createdAt }
     // Ticks each minute, so Now / Next, the greeting and "today" stay right while My day is open.
@@ -76,10 +89,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
     if (state.proposal != null) shownProposal = state.proposal
 
     LazyColumn(
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier.fillMaxSize().testTag("plan-list"),
+        state = listState,
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
+        item {
+            PlanPremiumHero(state.selectedDate.format(dayFormat))
+        }
         item {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
@@ -89,9 +106,14 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         modifier = Modifier.testTag("day-title"),
                     )
                     Text(
-                        if (isToday) "Today · ${state.selectedDate.format(dayFormat)}" else state.selectedDate.format(dayFormat),
+                        (if (isToday) "Today · ${state.selectedDate.format(dayFormat)}" else state.selectedDate.format(dayFormat)) +
+                            if (showWeek) " · Hide week" else " · Show week",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.testTag("week-toggle")
+                            .clickable(role = Role.Button, onClickLabel = if (showWeek) "Hide week overview" else "Show week overview") {
+                                showWeek = !showWeek
+                            },
                     )
                 }
                 IconButton(onClick = { viewModel.selectDate(state.selectedDate.minusDays(1)) }, modifier = Modifier.testTag("day-previous")) {
@@ -107,6 +129,35 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         }
 
         item {
+            PlannerCommandCenter(
+                onWeek = {
+                    showWeek = !showWeek
+                    if (showWeek) scope.launch { listState.animateScrollToItem(3) }
+                },
+                onFind = {
+                    searchRequest++
+                    // Explorer is just above Insights, out of the way of voice and proposals.
+                    scope.launch {
+                        val explorerIndex = (listState.layoutInfo.totalItemsCount - 2).coerceAtLeast(0)
+                        listState.animateScrollToItem(explorerIndex)
+                    }
+                },
+                onReplan = viewModel::onReplan,
+                onAsk = viewModel::onAsk,
+                busy = state.busy,
+            )
+        }
+        if (showWeek) item {
+            CalendarOverview(
+                selectedDate = state.selectedDate,
+                today = today,
+                tasks = tasks,
+                onSelectDate = viewModel::selectDate,
+                routines = routines,
+            )
+        }
+
+        item {
             Card(
                 Modifier.fillMaxWidth(),
                 shape = MaterialTheme.shapes.large,
@@ -119,7 +170,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         value = state.input,
                         onValueChange = viewModel::onInputChange,
                         modifier = Modifier.fillMaxWidth().testTag("input"),
+                        label = { Text("Describe your day") },
                         placeholder = { Text(if (state.dictating) "Listening…" else "tmrw gym 6am, call Raj around 4ish, dentist fri 3-4pm, finish report by eod") },
+                        supportingText = { Text("Your plan stays on this phone. Review it before saving.") },
                         trailingIcon = if (viewModel.voiceEnabled) ({ DictationMic(state, viewModel) }) else null,
                         minLines = 2,
                         shape = MaterialTheme.shapes.medium,
@@ -136,6 +189,18 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                         ) { Text("Plan it") }
                         if (viewModel.voiceEnabled) TalkButton(state, viewModel)
                         QuickAsks(enabled = !state.busy, onAsk = viewModel::onAsk)
+                        AssistChip(
+                            onClick = { showExamples = !showExamples },
+                            label = { Text(if (showExamples) "Hide examples" else "Examples") },
+                            enabled = !state.busy,
+                            modifier = Modifier.testTag("capture-examples-toggle"),
+                        )
+                    }
+                    if (showExamples) {
+                        CaptureTemplateGallery(
+                            enabled = !state.busy,
+                            onChoose = viewModel::onInputChange,
+                        )
                     }
                     state.message?.let {
                         Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.secondaryContainer) {
@@ -223,6 +288,21 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
+        if (saved != null && saved.blocks.isNotEmpty()) {
+            item {
+                VisualRescheduler(
+                    plan = saved,
+                    tasks = tasks,
+                    preferences = state.preferences,
+                    busy = state.busy,
+                    onMove = { previous, updated ->
+                        lastQuickMove = ReversibleMove(previous, updated)
+                        viewModel.onSaveTask(updated)
+                    },
+                )
+            }
+        }
+
         if (dayTasks.isNotEmpty()) {
             item {
                 Text("Tasks", style = MaterialTheme.typography.titleMedium)
@@ -230,6 +310,28 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                 TaskRows(dayTasks, viewModel::onToggleTask) { editingId = it }
             }
         }
+        item {
+            val undo = lastQuickMove?.takeIf {
+                it.original.date == state.selectedDate &&
+                    it.canUndo(tasks.firstOrNull { current -> current.id == it.original.id })
+            }
+            QuickReschedule(
+                day = state.selectedDate,
+                tasks = dayTasks,
+                canUndo = undo != null,
+                busy = state.busy,
+                onMove = { task ->
+                    val moved = moveToNextDay(task, state.selectedDate)
+                    lastQuickMove = ReversibleMove(task, moved)
+                    viewModel.onSaveTask(moved)
+                },
+                onUndo = {
+                    undo?.let { viewModel.onSaveTask(it.original) }
+                    lastQuickMove = null
+                },
+            )
+        }
+
         if (backlog.isNotEmpty()) {
             item {
                 Text("No day yet", style = MaterialTheme.typography.titleMedium)
@@ -237,7 +339,32 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             }
         }
 
+        item {
+            TaskDiscovery(
+                allTasks = tasks,
+                onToggle = viewModel::onToggleTask,
+                onEdit = { editingId = it },
+                openRequest = searchRequest,
+                onBatch = viewModel::onBatchEdit,
+            )
+        }
+
         item { InsightsCard(insights) }
+
+        item {
+            ActionableProgressCard(
+                tasks = tasks,
+                selectedDate = today,
+                busy = state.busy,
+                onDeadlines = { viewModel.onAsk("show my deadlines") },
+                onRollOver = viewModel::onRollOver,
+                onFocus = { viewModel.onStartFocus(25, null) },
+                onPlanNextDay = {
+                    viewModel.selectDate(today.plusDays(1))
+                    scope.launch { listState.animateScrollToItem(0) }
+                },
+            )
+        }
     }
 
     VoiceConversation(state, viewModel)

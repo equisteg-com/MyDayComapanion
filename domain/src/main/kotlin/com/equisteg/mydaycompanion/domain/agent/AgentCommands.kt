@@ -6,7 +6,11 @@ import com.equisteg.mydaycompanion.domain.ai.text.TimeParser
 import com.equisteg.mydaycompanion.domain.ai.text.TimeRole
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
+import com.equisteg.mydaycompanion.domain.model.DayPlan
+import com.equisteg.mydaycompanion.domain.model.BlockKind
+import com.equisteg.mydaycompanion.domain.model.UserPreferences
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.LocalTime
 
 /**
@@ -24,6 +28,18 @@ sealed interface AgentCommand {
     /** "what's left", "how's my day", "summary". */
     data object DaySummary : AgentCommand
 
+    /** Open tasks with deadlines, including overdue items. Read-only. */
+    data object Deadlines : AgentCommand
+
+    /** Upcoming workload for the next seven days, with quick counts. Read-only. */
+    data object WeekSummary : AgentCommand
+
+    /** Explain scheduling choices, not inventing reasons from a generative model. */
+    data object ExplainPlan : AgentCommand
+
+    /** Explain concrete planner warnings and safe next steps. */
+    data object ExplainConflicts : AgentCommand
+
     /** "roll over", "move unfinished to today", "carry over yesterday". */
     data object RollOver : AgentCommand
 
@@ -39,6 +55,10 @@ class AgentCommandParser(dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONT
         if (text.isEmpty() || text.length > MAX_COMMAND_CHARS) return null
         if (whatsNext.matches(text)) return AgentCommand.WhatsNext
         if (summary.matches(text)) return AgentCommand.DaySummary
+        if (deadlines.matches(text)) return AgentCommand.Deadlines
+        if (weekSummary.matches(text)) return AgentCommand.WeekSummary
+        if (explainPlan.matches(text)) return AgentCommand.ExplainPlan
+        if (explainConflicts.matches(text)) return AgentCommand.ExplainConflicts
         if (rollOver.matches(text)) return AgentCommand.RollOver
         focus(text)?.let { return it }
         return move(text, today, now)
@@ -88,6 +108,22 @@ class AgentCommandParser(dateOrder: NumericDateOrder = NumericDateOrder.DAY_MONT
 
         private val whatsNext = Regex("(what'?s|what is|what) (next|now|up next|on now|coming up)( for me)?|what (should|do|can) i do (now|next)|next|up next", i)
         private val summary = Regex("(what'?s|what is) left( (today|for today))?|how'?s my day( going)?|how is my day( going)?|(day )?summary|summari[sz]e( my day)?|what'?s my day( look like)?", i)
+        private val deadlines = Regex(
+            "(what('?s| is| are) )?(my )?(next |upcoming |overdue )?(deadlines|due dates|tasks due)( this week| today| soon)?|when are my tasks due|show (my )?deadlines",
+            i,
+        )
+        private val weekSummary = Regex(
+            "(what('?s| is) )?(on )?(my )?(schedule|plan|tasks) (this|next) week|this week|week summary|weekly summary|how (busy|full) is my week",
+            i,
+        )
+        private val explainPlan = Regex(
+            "(why (did you|is it|was it) (schedule|plan|put|place).*)|(explain (my |the )?(plan|schedule|day))|(how (did you|is my) (schedule|plan|day)( work)?)",
+            i,
+        )
+        private val explainConflicts = Regex(
+            "(show|explain|review|resolve|fix) (my |the )?(scheduling )?(conflicts|warnings|overload|issues)|(what('?s| is) (blocking|conflicting|overloaded).*)",
+            i,
+        )
         private val rollOver = Regex(
             "roll ?over|carry (it |them )?over( (from )?yesterday)?|(move|bring|carry) (all |my )?(the )?(unfinished|undone|leftover|left ?over|open|missed) (tasks |items |ones )?(from yesterday )?(to|into|over to|onto) today",
             i,
@@ -156,6 +192,69 @@ object AgentReplies {
         val names = open.take(3).map { it.title }
         val more = if (open.size > 3) " and ${open.size - 3} more" else ""
         return "$done of ${day.size} done. Still to do: ${names.joinToString(", ")}$more."
+    }
+
+    /** The first five open deadlines, with overdue items clearly identified. */
+    fun deadlines(tasks: List<Task>, today: LocalDate, now: LocalTime): String {
+        val current = LocalDateTime.of(today, now)
+        val due = tasks.asSequence().filter {
+            it.status == TaskStatus.OPEN && it.parentId == null && it.deadline != null
+        }.sortedBy { it.deadline }.take(6).toList()
+        if (due.isEmpty()) return "No deadlines are set for open tasks. Add a due time to a task to track it here."
+        val names = due.take(5).joinToString("; ") { task ->
+            val deadline = task.deadline!!
+            val prefix = if (deadline.isBefore(current)) "Overdue: " else ""
+            "$prefix${task.title} by ${deadline.format(java.time.format.DateTimeFormatter.ofPattern("EEE d MMM, h:mm a", java.util.Locale.ENGLISH))}"
+        }
+        val more = if (due.size > 5) " More deadlines are in your task search." else ""
+        return "Your deadlines: $names.$more"
+    }
+
+    /** Short read-only lookahead; dates are evaluated in the phone's local timezone. */
+    fun weekSummary(tasks: List<Task>, today: LocalDate): String {
+        val until = today.plusDays(6)
+        val week = tasks.filter {
+            it.parentId == null && it.status != TaskStatus.CANCELLED &&
+                it.date != null && !it.date.isBefore(today) && !it.date.isAfter(until)
+        }
+        if (week.isEmpty()) return "No tasks scheduled over the next seven days."
+        val open = week.filter { it.status == TaskStatus.OPEN }
+        val minutes = open.sumOf { it.durationMinutes }
+        val sample = open.take(3).joinToString(", ") { it.title }
+        return "Next seven days: ${week.size} tasks, ${week.size - open.size} done, ${open.size} open, about ${minutes / 60} hours ${minutes % 60} minutes remaining." +
+            if (sample.isEmpty()) "" else " Upcoming: $sample."
+    }
+
+    /** Rule-based explanation of the actual planning contracts, not a guessed AI justification. */
+    fun explainPlan(plan: DayPlan?, preferences: UserPreferences): String {
+        if (plan == null) return "There is no saved plan for this day. Add tasks, then ask me again."
+        val taskCount = plan.blocks.count { it.kind == BlockKind.TASK }
+        val eventCount = plan.blocks.count { it.kind == BlockKind.FIXED_EVENT }
+        return "I fitted $taskCount task blocks around $eventCount fixed events. " +
+            "The planner first considers same-day deadlines, then preferred start times and priority. " +
+            "It keeps a ${preferences.bufferMinutes}-minute buffer between flexible tasks when possible, " +
+            "without moving fixed commitments. Preferred starts are flexible, not guaranteed. " +
+            if (plan.issues.isEmpty() && plan.unscheduledTaskIds.isEmpty()) {
+                "No planning warnings are recorded for this day."
+            } else {
+                "${plan.issues.size} warning(s) and ${plan.unscheduledTaskIds.size} unscheduled task(s). Ask 'show conflicts' for details."
+            }
+    }
+
+    /** Shows specific failures from the saved plan, with corrective but non-destructive advice. */
+    fun explainConflicts(plan: DayPlan?): String {
+        if (plan == null) return "There is no saved plan yet, so I cannot assess conflicts."
+        if (plan.issues.isEmpty() && plan.unscheduledTaskIds.isEmpty()) {
+            return "No scheduling warnings were found for this day. You can still edit a task's preferred start or duration."
+        }
+        val details = plan.issues.take(3).joinToString("; ") { it.message }
+        val extra = (plan.issues.size - 3).coerceAtLeast(0)
+        return "I found ${plan.issues.size} planning warning(s) and " +
+            "${plan.unscheduledTaskIds.size} unscheduled task(s). " +
+            (if (details.isEmpty()) "" else "Details: $details. ") +
+            (if (extra > 0) "$extra more warning(s) are shown on the timeline. " else "") +
+            "To recover, shorten a flexible task, move it to another day, or review your day window in Settings. " +
+            "Fixed events are not moved automatically."
     }
 
     fun whenText(date: LocalDate?, time: LocalTime?, today: LocalDate): String = listOfNotNull(

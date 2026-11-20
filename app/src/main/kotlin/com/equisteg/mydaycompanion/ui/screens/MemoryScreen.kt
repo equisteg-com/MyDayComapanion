@@ -50,10 +50,14 @@ fun MemoryScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
 
     LazyColumn(modifier.fillMaxSize().padding(16.dp).testTag("memory-screen"), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         item {
-            Text("Memory", style = MaterialTheme.typography.titleLarge)
+            MemoryPremiumHero(
+                remembered = state.keptMemories.size,
+                waiting = state.proposedMemories.size,
+            )
             Text(
-                "What your agent knows about how you like your day. It only uses what you keep here, and you can make it forget anything.",
-                style = MaterialTheme.typography.bodySmall,
+                "Review what your assistant remembers, approve suggestions, or forget anything.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
         state.message?.let { msg -> item { Text(msg, style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("memory-message")) } }

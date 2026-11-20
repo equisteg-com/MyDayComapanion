@@ -137,15 +137,64 @@ class DeterministicPlannerTest {
     }
 
     @Test
-    fun `a midnight preferred task cannot roll over into the next day`() {
+    fun `a preferred task near midnight falls back earlier without crossing midnight`() {
+        // A preferred start is soft: 23:50 + 30 minutes cannot fit, so the nearest
+        // same-day position is 23:29–23:59 rather than wrapping LocalTime to tomorrow.
         val late = task("late", 30).copy(preferredStart = LocalTime.of(23, 50))
         val req = request(listOf(late))
+        val plan = planner.plan(req)
+
+        assertEquals(LocalTime.of(23, 29), plan.blocks.single().start)
+        assertEquals(LocalTime.of(23, 59), plan.blocks.single().end)
+        assertEquals(emptyList(), plan.unscheduledTaskIds)
+        assertEquals(emptyList(), PlanValidator.validate(plan, req))
+    }
+
+    @Test
+    fun `task is unscheduled when the remaining day cannot fit its duration`() {
+        val late = task("late", 30).copy(preferredStart = LocalTime.of(23, 50))
+        val req = request(listOf(late)).copy(dayStart = LocalTime.of(23, 30), dayEnd = LocalTime.of(23, 59))
         val plan = planner.plan(req)
 
         assertTrue(plan.blocks.isEmpty())
         assertEquals(listOf("late"), plan.unscheduledTaskIds)
         assertTrue(plan.issues.any { it.type == PlanIssueType.OVERLOADED && it.refId == "late" })
         assertEquals(emptyList(), PlanValidator.validate(plan, req))
+    }
+
+    @Test
+    fun `validator rejects phantom, missing and ineligible tasks`() {
+        val req = request(listOf(task("a", 30), task("b", 30), task("done", 30).copy(status = TaskStatus.DONE)))
+        val valid = planner.plan(req)
+        val a = valid.blocks.first { it.refId == "a" }
+        val dropped = valid.copy(blocks = valid.blocks.filterNot { it.refId == "b" })
+        val phantom = valid.copy(blocks = valid.blocks + a.copy(refId = "invented"))
+        val ineligible = valid.copy(unscheduledTaskIds = listOf("done"))
+        assertTrue(PlanValidator.validate(dropped, req).any { it.contains("silently dropped") })
+        assertTrue(PlanValidator.validate(phantom, req).any { it.contains("unknown or ineligible") })
+        assertTrue(PlanValidator.validate(ineligible, req).any { it.contains("unknown or ineligible") })
+    }
+
+    @Test
+    fun `validator rejects a plan that silently shortens a task`() {
+        val req = request(listOf(task("report", 60)))
+        val valid = planner.plan(req)
+        val changed = valid.copy(blocks = valid.blocks.map {
+            if (it.refId == "report") it.copy(end = it.start.plusMinutes(1)) else it
+        })
+        assertTrue(PlanValidator.validate(changed, req).any { it.contains("duration differs") })
+    }
+
+    @Test
+    fun `validator rejects wrong date, extra events and duplicate unscheduled IDs`() {
+        val req = request(listOf(task("a", 30)), listOf(meeting("meeting", LocalTime.of(11, 0))))
+        val valid = planner.plan(req)
+        val event = valid.blocks.first { it.kind == BlockKind.FIXED_EVENT }
+        assertTrue(PlanValidator.validate(valid.copy(date = date.plusDays(1)), req).any { it.contains("Plan date") })
+        assertTrue(PlanValidator.validate(valid.copy(blocks = valid.blocks + event.copy(refId = "unknown-event")), req)
+            .any { it.contains("unknown fixed event") })
+        assertTrue(PlanValidator.validate(valid.copy(unscheduledTaskIds = listOf("a", "a")), req)
+            .any { it.contains("more than once") })
     }
 
     @Test

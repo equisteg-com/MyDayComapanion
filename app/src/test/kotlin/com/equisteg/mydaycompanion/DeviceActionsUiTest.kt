@@ -7,6 +7,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import com.equisteg.mydaycompanion.domain.config.FeatureFlags
 import com.equisteg.mydaycompanion.domain.config.Flag
@@ -66,9 +67,12 @@ class DeviceActionsUiTest {
         compose.setContent { AppNavigation(viewModel) }
         viewModel.onReplan()
         compose.waitUntil(5_000) { runBlocking { graph.plans.get(task.date!!) } != null }
-        compose.onNodeWithTag("read-day").performScrollTo().performClick()
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("read-day"))
+        compose.onNodeWithTag("read-day").performClick()
         compose.waitUntil(5_000) { graph.phone.spoken.isNotEmpty() }
         assertTrue(graph.phone.spoken.single().startsWith("1 task today."), graph.phone.spoken.single())
+        // The redesigned page can scroll the voice input out of composition while the read action is visible.
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("voice"))
         assertTrue(compose.onAllNodes(hasTestTag("voice")).fetchSemanticsNodes().isNotEmpty(), "mic button shown")
     }
 

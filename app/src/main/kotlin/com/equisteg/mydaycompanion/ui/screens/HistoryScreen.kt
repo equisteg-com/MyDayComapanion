@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,8 +74,10 @@ fun HistoryScreen(state: UiState, onFilter: (HistoryFilter) -> Unit, onKeepDays:
     val shown = state.shownHistory
     LazyColumn(modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item {
-            Text("History", style = MaterialTheme.typography.titleLarge)
-            Text("Everything you and your agent did on this phone. It never contains what your tasks or memories say.", style = MaterialTheme.typography.bodySmall)
+            HistoryPremiumHero(shown.size)
+            Text("Audit your actions. The log records outcomes, not the text of tasks or memories.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         item {
             Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -114,7 +118,15 @@ fun HistoryScreen(state: UiState, onFilter: (HistoryFilter) -> Unit, onKeepDays:
 @Composable
 private fun HistoryRow(e: AuditEntry, fromBackup: Boolean) {
     val problem = e.decision == AuditDecision.DENIED || e.outcome == AuditOutcome.FAILURE || e.outcome == AuditOutcome.VERIFICATION_FAILED
-    Column(Modifier.testTag("history-${e.id}")) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("history-${e.id}"),
+        shape = MaterialTheme.shapes.medium,
+        colors = CardDefaults.cardColors(
+            containerColor = if (problem) MaterialTheme.colorScheme.errorContainer
+            else MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         Text(
             "${timeFormat.format(e.timestamp)}  ${ACTION_NAMES[e.action] ?: e.action}",
             style = MaterialTheme.typography.bodyMedium,
@@ -132,5 +144,6 @@ private fun HistoryRow(e: AuditEntry, fromBackup: Boolean) {
             ).joinToString(" · "),
             style = MaterialTheme.typography.bodySmall,
         )
+        }
     }
 }

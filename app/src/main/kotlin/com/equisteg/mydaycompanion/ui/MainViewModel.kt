@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.equisteg.mydaycompanion.AppServices
 import com.equisteg.mydaycompanion.domain.agent.AgentCommand
+import com.equisteg.mydaycompanion.domain.agent.ClarificationGuidance
 import com.equisteg.mydaycompanion.domain.agent.AgentCommandParser
 import com.equisteg.mydaycompanion.domain.agent.AgentProposal
 import com.equisteg.mydaycompanion.domain.agent.AgentReplies
@@ -36,6 +37,8 @@ import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
+import com.equisteg.mydaycompanion.domain.productivity.BatchEditAction
+import com.equisteg.mydaycompanion.domain.productivity.BatchEditPlanner
 import com.equisteg.mydaycompanion.domain.reminders.DailyBrief
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
@@ -456,7 +459,9 @@ class MainViewModel(
         }
         when (val p = services.orchestrator.propose(text)) {
             is AgentProposal.Ready -> _state.update { it.copy(proposal = p, message = null, suggestion = null, choice = null) }
-            is AgentProposal.NotUnderstood -> _state.update { it.copy(message = p.reason) }
+            is AgentProposal.NotUnderstood -> _state.update {
+                it.copy(message = p.reason + "\n" + ClarificationGuidance.forInput(text))
+            }
             AgentProposal.Empty -> Unit
         }
     }
@@ -470,6 +475,12 @@ class MainViewModel(
         when (command) {
             AgentCommand.WhatsNext -> chat(owner = false, AgentReplies.whatsNext(services.plans.get(today), services.tasks.all(), nowTime()))
             AgentCommand.DaySummary -> chat(owner = false, AgentReplies.daySummary(services.tasks.all(), today))
+            AgentCommand.Deadlines -> chat(owner = false, AgentReplies.deadlines(services.tasks.all(), today, nowTime()))
+            AgentCommand.WeekSummary -> chat(owner = false, AgentReplies.weekSummary(services.tasks.all(), today))
+            AgentCommand.ExplainPlan -> chat(owner = false,
+                AgentReplies.explainPlan(services.plans.get(_state.value.selectedDate), _state.value.preferences))
+            AgentCommand.ExplainConflicts -> chat(owner = false,
+                AgentReplies.explainConflicts(services.plans.get(_state.value.selectedDate)))
             AgentCommand.RollOver -> offerRollOver()
             is AgentCommand.Focus -> {
                 val match = command.query?.let { TaskMatcher.find(it, services.tasks.all(), today) }
@@ -1043,7 +1054,71 @@ class MainViewModel(
 
     /** The owner saved the edit form. Every field is sent, so the approval covers exactly what was on screen. */
     fun onSaveTask(task: Task) = launchBusy {
-        runUserAction(ProposedAction("tasks.update", UpdateTaskTool.args(task)), "Save changes?", "This is a personal task.")
+        // Retain the original date for correctly rebuilding BOTH days after a move or undo.
+        // Using basedOn also prevents a delayed personal-task approval overwriting newer edits.
+        val previous = services.tasks.get(task.id)
+        runUserAction(
+            ProposedAction("tasks.update", UpdateTaskTool.args(task)),
+            "Save changes?", "This is a personal task.",
+            basedOn = previous,
+        )
+    }
+
+    /**
+     * Premium bulk editor. All selections are validated before touching storage. Individual
+     * changes remain auditable through the same authorized tools as single-task editing.
+     *
+     * Avoids private/routine/child tasks (and parents containing private steps) so a single
+     * bulk tap can never silently bypass a per-item credential or security confirmation.
+     * A mid-batch failure is reported as partial, never as an atomic success.
+     */
+    fun onBatchEdit(selectedIds: Set<String>, action: BatchEditAction) {
+        if (_state.value.busy) return
+        launchBusy {
+            if (_state.value.pending != null || _state.value.authRequest != null) {
+                _state.update { it.copy(message = "Finish the current approval before editing several tasks.") }
+                return@launchBusy
+            }
+            val draft = BatchEditPlanner.plan(services.tasks.all(), selectedIds, action, today())
+                .getOrElse { error ->
+                    _state.update { it.copy(message = error.message ?: "These tasks cannot be edited together.") }
+                    return@launchBusy
+                }
+            var completed = 0
+            var failure: String? = null
+            for ((before, after) in draft.changes) {
+                if (services.tasks.get(before.id) != before) {
+                    failure = "A selected task changed while editing. Remaining edits were stopped."
+                    break
+                }
+                val operation = when (action) {
+                    BatchEditAction.COMPLETE -> ProposedAction("tasks.complete", args("taskId" to before.id))
+                    BatchEditAction.REOPEN -> ProposedAction("tasks.reopen", args("taskId" to before.id))
+                    BatchEditAction.PRIORITY_HIGH, BatchEditAction.MOVE_TOMORROW ->
+                        ProposedAction("tasks.update", UpdateTaskTool.args(after))
+                }
+                when (val result = services.orchestrator.execute(operation, Requester.USER)) {
+                    is ExecutionResult.Done -> completed++
+                    else -> {
+                        failure = "Bulk action stopped: ${describe(result)}"
+                        break
+                    }
+                }
+            }
+            if (completed > 0) {
+                val days = draft.changes.take(completed)
+                    .flatMap { (previous, updated) -> listOfNotNull(previous.date, updated.date) }
+                    .toSet()
+                for (date in days) replan(date)
+            }
+            _state.update {
+                it.copy(message = if (failure == null) {
+                    "$completed task(s) updated. Your plan and reminders were refreshed."
+                } else {
+                    "$completed of ${draft.changes.size} changed. $failure Review the remaining tasks."
+                })
+            }
+        }
     }
 
     fun onDeleteTask(taskId: String) = launchBusy {
@@ -1596,7 +1671,9 @@ class MainViewModel(
                     return
                 }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("security.")) reloadSecurity()
-                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) replanAfter(pending.action)
+                if (r is ExecutionResult.Done && pending.action.toolId.startsWith("tasks.")) {
+                    replanAfter(pending.action, previousDate = pending.basedOn?.date)
+                }
                 if (r is ExecutionResult.Done && pending.action.toolId.startsWith("routines.")) services.maintenance.run()
                 if (pending.action.toolId.startsWith("memory.")) loadMemories()
                 // Reload after any restore that ran, so the screens never show settings the stores no longer hold.
@@ -1661,13 +1738,13 @@ class MainViewModel(
      * An everyday action the owner started: it runs at once unless the policy asks for approval
      * (a personal task), in which case the owner's chosen verification runs first.
      */
-    private suspend fun runUserAction(action: ProposedAction, title: String, personalBody: String) {
+    private suspend fun runUserAction(action: ProposedAction, title: String, personalBody: String, basedOn: Task? = null) {
         when (val r = services.orchestrator.execute(action, Requester.USER)) {
-            is ExecutionResult.Done -> replanAfter(action)
+            is ExecutionResult.Done -> replanAfter(action, previousDate = basedOn?.date)
             is ExecutionResult.NeedsConfirmation -> {
                 val s = _state.value
                 val steps = ApprovalRules.stepsFor(r.riskLevel, personal = r.personal, settings = s.security, hasChallenges = s.hasChallenges)
-                advance(PendingConfirmation(action, r.actionFingerprint, title, personalBody, steps))
+                advance(PendingConfirmation(action, r.actionFingerprint, title, personalBody, steps, basedOn = basedOn))
             }
             else -> _state.update { it.copy(message = describe(r)) }
         }
@@ -1686,11 +1763,15 @@ class MainViewModel(
         }
     }
 
-    /** Rebuilds the shown day, and the day a task was moved to. */
-    private suspend fun replanAfter(action: ProposedAction) {
-        replan()
-        val movedTo = ((action.args["date"] ?: action.args["to"]) as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
-        if (movedTo != null && movedTo != _state.value.selectedDate) replan(movedTo)
+    /** Rebuilds each distinct affected day, including the old day after moving or undoing a task. */
+    private suspend fun replanAfter(action: ProposedAction, previousDate: LocalDate? = null) {
+        val movedTo = ((action.args["date"] ?: action.args["to"]) as? JsonPrimitive)
+            ?.takeIf { it.isString }?.content
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+        val affected = linkedSetOf(_state.value.selectedDate)
+        if (previousDate != null) affected.add(previousDate)
+        if (movedTo != null) affected.add(movedTo)
+        affected.forEach { replan(it) }
     }
 
     private suspend fun replan(date: LocalDate = _state.value.selectedDate) {

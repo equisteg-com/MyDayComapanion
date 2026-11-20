@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -48,8 +50,14 @@ fun RoutinesScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Routines", style = MaterialTheme.typography.titleLarge)
-        Text("Things you do again and again. Each one is added to your day on the days it is due, and planned around everything else.")
+        RoutinePremiumHero(
+            active = routines.count { it.enabled },
+            total = routines.size,
+        )
+        Text("Your automations", style = MaterialTheme.typography.titleMedium)
+        Text("Create once, repeat on schedule. Pause a routine or switch reminders anytime.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
         state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
 
         if (routines.isEmpty()) {
@@ -74,7 +82,14 @@ internal fun routineSummary(r: Routine): String {
 
 @Composable
 private fun RoutineRow(r: Routine, busy: Boolean, onUpdate: (Routine) -> Unit, onDelete: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().testTag("routine-${r.id}")) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("routine-${r.id}"),
+        colors = CardDefaults.cardColors(containerColor =
+            if (r.enabled) MaterialTheme.colorScheme.surfaceContainerHigh
+            else MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(r.title, style = MaterialTheme.typography.titleMedium)
@@ -92,6 +107,7 @@ private fun RoutineRow(r: Routine, busy: Boolean, onUpdate: (Routine) -> Unit, o
                 Text(if (r.remind) "Turn reminder off" else "Turn reminder on")
             }
             TextButton(onClick = { onDelete(r.id) }, enabled = !busy, modifier = Modifier.testTag("routine-delete-${r.id}")) { Text("Delete") }
+        }
         }
     }
 }

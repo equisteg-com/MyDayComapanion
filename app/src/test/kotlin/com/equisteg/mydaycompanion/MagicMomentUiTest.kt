@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import com.equisteg.mydaycompanion.data.privacy.ContentResolverExportTargets
@@ -123,15 +124,20 @@ class MagicMomentUiTest {
     @Test
     fun `type a day, review the proposal, add it, see the saved plan`() {
         compose.setContent { AppNavigation(viewModel) }
+        scrollTo("input")
 
         compose.onNodeWithTag("input").performTextInput(
             "Tomorrow I need to finish the proposal, call Raj, work out, buy groceries, and I have a meeting at 11.",
         )
         compose.onNodeWithTag("submit").performClick()
+        waitFor("proposal state") { viewModel.state.value.proposal != null }
+        scrollTo("proposal")
         waitFor("proposal") { compose.onAllNodes(hasTestTag("proposal")).fetchSemanticsNodes().isNotEmpty() }
         assertEquals(0, runBlocking { graph.tasks.count() }, "nothing saved before confirmation")
 
         compose.onNodeWithTag("accept").assertIsEnabled().performClick()
+        waitFor("saved plan data") { viewModel.plan.value?.date?.toString() == "2026-10-07" }
+        scrollTo("plan-2026-10-07")
         waitFor("saved plan for 2026-10-07") { compose.onAllNodes(hasTestTag("plan-2026-10-07")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNode(hasText("Finish the proposal") and hasAnyAncestor(hasTestTag("plan-2026-10-07"))).assertIsDisplayed()
         assertEquals(4, runBlocking { graph.tasks.count() })
@@ -140,9 +146,12 @@ class MagicMomentUiTest {
     @Test
     fun `messy text over several days is understood and saved to each day`() {
         compose.setContent { AppNavigation(viewModel) }
+        scrollTo("input")
 
         compose.onNodeWithTag("input").performTextInput("today finish report, tmrw call Raj 10am, fri dentist 4:30pm")
         compose.onNodeWithTag("submit").performClick()
+        waitFor("proposal state") { viewModel.state.value.proposal != null }
+        scrollTo("proposal")
         waitFor("proposal") { compose.onAllNodes(hasTestTag("proposal")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("preview-2026-10-07").assertExists()
         compose.onNodeWithTag("preview-2026-10-09").assertExists()
@@ -150,6 +159,11 @@ class MagicMomentUiTest {
         compose.onNodeWithTag("accept").performClick()
         waitFor("saved message") { viewModel.state.value.message == "Added to 3 days." }
         assertEquals(3, runBlocking { graph.plans.count() })
+    }
+
+    /** Scrolls to lazily composed content: premium dashboards intentionally keep content above the fold. */
+    private fun scrollTo(tag: String) {
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag(tag))
     }
 
     /** Like waitUntil, but a timeout reports what the screen and view model actually held. */

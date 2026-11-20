@@ -3,6 +3,10 @@ package com.equisteg.mydaycompanion.navigation
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
@@ -17,6 +21,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,6 +32,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,44 +86,77 @@ fun AppNavigation(viewModel: MainViewModel) {
         return
     }
 
-    Scaffold(
-        bottomBar = {
-            NavigationBar {
-                Destination.entries.forEach { d ->
-                    NavigationBarItem(
-                        selected = current == d,
-                        onClick = {
-                            current = d
-                            if (d == Destination.HISTORY) viewModel.refreshHistory()
-                            if (d == Destination.MEMORY) viewModel.refreshMemories()
-                        },
-                        icon = {
-                            val waiting = if (d == Destination.MEMORY) state.proposedMemories.size else 0
-                            BadgedBox(badge = { if (waiting > 0) Badge(Modifier.testTag("memory-badge")) { Text("$waiting") } }) {
-                                Icon(d.icon, contentDescription = null)
-                            }
-                        },
-                        label = { Text(d.label) },
-                        modifier = Modifier.testTag("nav-${d.name}"),
-                    )
+    fun selectTab(d: Destination) {
+        current = d
+        if (d == Destination.HISTORY) viewModel.refreshHistory()
+        if (d == Destination.MEMORY) viewModel.refreshMemories()
+    }
+
+    // NavigationRail on tablets/foldables and standard five-tab NavigationBar on phones.
+    // Every destination retains its stable test tag and a screen-reader label.
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val isWide = maxWidth >= 720.dp
+        Scaffold(
+            bottomBar = {
+                if (!isWide) {
+                    NavigationBar {
+                        Destination.entries.forEach { d ->
+                            NavigationBarItem(
+                                selected = current == d,
+                                onClick = { selectTab(d) },
+                                icon = { TabIcon(d, state.proposedMemories.size) },
+                                label = { Text(d.label) },
+                                modifier = Modifier.testTag("nav-${d.name}"),
+                            )
+                        }
+                    }
                 }
-            }
-        },
-    ) { padding ->
-        val modifier = Modifier.padding(padding)
-        // A short cross-fade between tabs (UPD-010).
-        Crossfade(targetState = current, animationSpec = tween(220), label = "tab") { tab ->
-            when (tab) {
-                Destination.PLAN -> PlanScreen(viewModel, modifier)
-                Destination.ROUTINES -> RoutinesScreen(viewModel, modifier)
-                Destination.MEMORY -> MemoryScreen(viewModel, modifier)
-                Destination.HISTORY -> HistoryScreen(state, viewModel::onHistoryFilter, viewModel::onHistoryKeepDays, modifier)
-                Destination.SETTINGS -> SettingsScreen(viewModel, modifier)
+            },
+        ) { padding ->
+            Row(Modifier.fillMaxSize().padding(padding)) {
+                if (isWide) {
+                    NavigationRail {
+                        Destination.entries.forEach { d ->
+                            NavigationRailItem(
+                                selected = current == d,
+                                onClick = { selectTab(d) },
+                                icon = { TabIcon(d, state.proposedMemories.size) },
+                                label = { Text(d.label) },
+                                alwaysShowLabel = true,
+                                modifier = Modifier.testTag("nav-${d.name}"),
+                            )
+                        }
+                    }
+                }
+                Box(Modifier.weight(1f).fillMaxSize()) {
+                    Crossfade(targetState = current, animationSpec = tween(220), label = "tab") { tab ->
+                        val screenModifier = Modifier.fillMaxSize()
+                        when (tab) {
+                            Destination.PLAN -> PlanScreen(viewModel, screenModifier)
+                            Destination.ROUTINES -> RoutinesScreen(viewModel, screenModifier)
+                            Destination.MEMORY -> MemoryScreen(viewModel, screenModifier)
+                            Destination.HISTORY -> HistoryScreen(state, viewModel::onHistoryFilter,
+                                viewModel::onHistoryKeepDays, screenModifier)
+                            Destination.SETTINGS -> SettingsScreen(viewModel, screenModifier)
+                        }
+                    }
+                }
             }
         }
     }
 
     ApprovalDialogs(viewModel, state)
+}
+
+/** Shared semantic icons for responsive navigation, including pending memory badges. */
+@Composable
+private fun TabIcon(d: Destination, waitingMemories: Int) {
+    val waiting = if (d == Destination.MEMORY) waitingMemories else 0
+    BadgedBox(badge = {
+        if (waiting > 0) Badge(Modifier.testTag("memory-badge")) { Text("$waiting") }
+    }) {
+        Icon(d.icon, contentDescription = d.label)
+    }
 }
 
 /** The challenge question and the Confirm step of a pending approval, shown over any screen. */

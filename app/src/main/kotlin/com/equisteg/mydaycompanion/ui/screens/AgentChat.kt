@@ -33,7 +33,7 @@ import com.equisteg.mydaycompanion.ui.TaskChoice
 import java.util.Locale
 
 /** Quick questions under the input; each one is sent as if typed. */
-val QUICK_ASKS = listOf("What's next?", "What's left?", "Roll over", "Focus 25 min")
+val QUICK_ASKS = listOf("What's next?", "What's left?", "Roll over", "Focus 25 min", "Explain my plan", "Show conflicts")
 
 /** The last lines of the chat: the owner's on the right, the agent's on the left. In memory only. */
 @Composable

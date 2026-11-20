@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -37,6 +38,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -155,7 +157,22 @@ fun Timeline(
 ) {
     Column(Modifier.testTag(tag), verticalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 6.dp)) {
         plan.blocks.forEach { block -> TimelineRow(block, statusById[block.refId] == TaskStatus.DONE, onToggle, now, onEdit, compact) }
-        plan.issues.forEach { Text("⚠ ${it.message}", style = MaterialTheme.typography.bodySmall) }
+        plan.issues.forEach { issue ->
+            Surface(
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                shape = MaterialTheme.shapes.small,
+                modifier = Modifier.fillMaxWidth().semantics {
+                    contentDescription = "Planning warning: ${issue.message}"
+                },
+            ) {
+                Text(
+                    issue.message,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                )
+            }
+        }
     }
 }
 
@@ -186,7 +203,14 @@ private fun TimelineRow(block: PlanBlock, done: Boolean, onToggle: ((String) -> 
             Box(Modifier.width(4.dp).fillMaxHeight().clip(RoundedCornerShape(2.dp)).background(accent))
             Spacer(Modifier.width(12.dp))
             Column(
-                Modifier.weight(1f).then(if (onEdit != null && isTask) Modifier.clickable { onEdit(block.refId) } else Modifier),
+                Modifier.weight(1f).then(
+                    if (onEdit != null && isTask) {
+                        Modifier.heightIn(min = 48.dp).clickable(
+                            onClickLabel = "Edit task: ${block.title}",
+                            role = Role.Button,
+                        ) { onEdit(block.refId) }
+                    } else Modifier
+                ),
             ) {
                 Text(
                     block.title,
@@ -201,7 +225,13 @@ private fun TimelineRow(block: PlanBlock, done: Boolean, onToggle: ((String) -> 
                 )
             }
             if (onToggle != null && isTask) {
-                Checkbox(checked = done, onCheckedChange = { onToggle(block.refId) })
+                Checkbox(
+                    checked = done,
+                    onCheckedChange = { onToggle(block.refId) },
+                    modifier = Modifier.testTag("timeline-toggle-${block.refId}").semantics {
+                        contentDescription = if (done) "Mark ${block.title} as not done" else "Mark ${block.title} as done"
+                    },
+                )
             }
         }
     }

@@ -80,7 +80,13 @@ class UpdateTaskTool(private val tasks: TaskRepository, private val clock: Clock
             updatedAt = now,
         )
         val moved = if (task.parentId == null && task.date != e.date) {
-            tasks.children(task.id).map { it.copy(date = e.date, updatedAt = now) }
+            tasks.children(task.id).map { child ->
+                child.copy(
+                    date = e.date,
+                    deadline = child.deadline?.let { due -> e.date?.atTime(due.toLocalTime()) },
+                    updatedAt = now,
+                )
+            }
         } else {
             emptyList()
         }
@@ -96,7 +102,13 @@ class UpdateTaskTool(private val tasks: TaskRepository, private val clock: Clock
     }
 
     /** Taking the personal mark off a task is itself a change to a personal item. */
-    override suspend fun touchesPersonal(args: JsonObject): Boolean = tasks.get(args.string("taskId")!!)?.personal == true
+    override suspend fun touchesPersonal(args: JsonObject): Boolean {
+        val task = tasks.get(args.string("taskId")!!) ?: return false
+        if (task.personal) return true
+        val edit = parse(args) ?: return false
+        return task.parentId == null && task.date != edit.date &&
+            tasks.children(task.id).any { it.personal }
+    }
 
     companion object {
         private val KEYS = arrayOf("taskId", "title", "priority", "durationMinutes", "personal", "date", "preferredStart", "deadline", "notes")
@@ -150,7 +162,10 @@ class DeleteTaskTool(private val tasks: TaskRepository) : AgentTool {
         return gone && tasks.children(id).isEmpty()
     }
 
-    override suspend fun touchesPersonal(args: JsonObject): Boolean = tasks.get(args.string("taskId")!!)?.personal == true
+    override suspend fun touchesPersonal(args: JsonObject): Boolean {
+        val task = tasks.get(args.string("taskId")!!) ?: return false
+        return task.personal || tasks.children(task.id).any { it.personal }
+    }
 }
 
 /**
@@ -327,8 +342,12 @@ class RollOverTasksTool(private val tasks: TaskRepository, private val clock: Cl
         return ids.all { id -> tasks.get(id)?.date == to && tasks.all().filter { it.parentId == id }.all { it.date == to } }
     }
 
-    override suspend fun touchesPersonal(args: JsonObject): Boolean =
-        parse(args)?.second?.any { tasks.get(it)?.personal == true } == true
+    override suspend fun touchesPersonal(args: JsonObject): Boolean {
+        val ids = parse(args)?.second?.toSet() ?: return false
+        return tasks.all().any {
+            it.personal && (it.id in ids || it.parentId in ids)
+        }
+    }
 
     companion object {
         const val MAX_TASKS = 50
