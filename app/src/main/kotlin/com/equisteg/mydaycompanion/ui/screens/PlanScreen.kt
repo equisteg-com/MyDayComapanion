@@ -138,6 +138,7 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
                     scope.launch { listState.animateScrollToItem(3) }
                 },
                 onReplan = viewModel::onReplan,
+                onAsk = viewModel::onAsk,
                 busy = state.busy,
             )
         }
