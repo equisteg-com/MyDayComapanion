@@ -37,6 +37,8 @@ import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import com.equisteg.mydaycompanion.domain.model.UserPreferences
+import com.equisteg.mydaycompanion.domain.productivity.BatchEditAction
+import com.equisteg.mydaycompanion.domain.productivity.BatchEditPlanner
 import com.equisteg.mydaycompanion.domain.reminders.DailyBrief
 import com.equisteg.mydaycompanion.domain.policy.Requester
 import com.equisteg.mydaycompanion.domain.policy.UserConfirmation
@@ -1056,6 +1058,63 @@ class MainViewModel(
             "Save changes?", "This is a personal task.",
             basedOn = previous,
         )
+    }
+
+    /**
+     * Premium bulk editor. All selections are validated before touching storage. Individual
+     * changes remain auditable through the same authorized tools as single-task editing.
+     *
+     * Avoids private/routine/child tasks (and parents containing private steps) so a single
+     * bulk tap can never silently bypass a per-item credential or security confirmation.
+     * A mid-batch failure is reported as partial, never as an atomic success.
+     */
+    fun onBatchEdit(selectedIds: Set<String>, action: BatchEditAction) {
+        if (_state.value.busy) return
+        launchBusy {
+            if (_state.value.pending != null || _state.value.authRequest != null) {
+                _state.update { it.copy(message = "Finish the current approval before editing several tasks.") }
+                return@launchBusy
+            }
+            val draft = BatchEditPlanner.plan(services.tasks.all(), selectedIds, action, today())
+                .getOrElse { error ->
+                    _state.update { it.copy(message = error.message ?: "These tasks cannot be edited together.") }
+                    return@launchBusy
+                }
+            var completed = 0
+            var failure: String? = null
+            for ((before, after) in draft.changes) {
+                if (services.tasks.get(before.id) != before) {
+                    failure = "A selected task changed while editing. Remaining edits were stopped."
+                    break
+                }
+                val operation = when (action) {
+                    BatchEditAction.COMPLETE -> ProposedAction("tasks.complete", args("taskId" to before.id))
+                    BatchEditAction.REOPEN -> ProposedAction("tasks.reopen", args("taskId" to before.id))
+                    BatchEditAction.PRIORITY_HIGH, BatchEditAction.MOVE_TOMORROW ->
+                        ProposedAction("tasks.update", UpdateTaskTool.args(after))
+                }
+                when (val result = services.orchestrator.execute(operation, Requester.USER)) {
+                    is ExecutionResult.Done -> completed++
+                    else -> {
+                        failure = "Bulk action stopped: ${describe(result)}"
+                        break
+                    }
+                }
+            }
+            if (completed > 0) {
+                val days = draft.changes.take(completed)
+                    .flatMap { (previous, updated) -> listOfNotNull(previous.date, updated.date) }
+                    .toSet()
+                for (date in days) replan(date)
+            }
+            _state.update {
+                it.copy(message = if (failure == null) {
+                    "$completed task(s) updated. Your plan and reminders were refreshed."
+                } else {
+                    "$completed of ${draft.changes.size} changed. $failure Review the remaining tasks."
+                })
+            }
+        }
     }
 
     fun onDeleteTask(taskId: String) = launchBusy {
