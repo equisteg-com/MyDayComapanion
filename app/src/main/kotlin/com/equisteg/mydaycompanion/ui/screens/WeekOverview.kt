@@ -21,10 +21,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
-import java.time.DayOfWeek
+import java.util.Locale
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAdjusters
+import java.time.temporal.WeekFields
 
 private val weekdayShort = DateTimeFormatter.ofPattern("EEE d")
 private val weekMonth = DateTimeFormatter.ofPattern("d MMM")
@@ -32,24 +33,25 @@ private val weekMonth = DateTimeFormatter.ofPattern("d MMM")
 data class WeekDaySummary(val date: LocalDate, val planned: Int, val done: Int)
 
 /** Computation is independent from the UI and omits cancelled routine instances. */
-fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>): List<WeekDaySummary> {
-    val monday = selectedDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>, locale: Locale = Locale.getDefault()): List<WeekDaySummary> {
+    val firstDay = selectedDate.with(TemporalAdjusters.previousOrSame(WeekFields.of(locale).firstDayOfWeek))
     val planned = IntArray(7)
     val done = IntArray(7)
     for (task in tasks) {
         if (task.status == TaskStatus.CANCELLED) continue
         val date = task.date ?: continue
-        val index = java.time.temporal.ChronoUnit.DAYS.between(monday, date).toInt()
-        if (index !in 0..6) continue
+        val offset = java.time.temporal.ChronoUnit.DAYS.between(firstDay, date)
+        if (offset !in 0L..6L) continue
+        val index = offset.toInt()
         planned[index]++
         if (task.status == TaskStatus.DONE) done[index]++
     }
     return (0..6).map { offset ->
-        WeekDaySummary(monday.plusDays(offset.toLong()), planned[offset], done[offset])
+        WeekDaySummary(firstDay.plusDays(offset.toLong()), planned[offset], done[offset])
     }
 }
 
-/** Week-at-a-glance is an accessible alternative to drag-only calendar navigation. */
+/** Week-at-a-glance uses the phone's locale for week start, and supports accessible tap navigation. */
 @Composable
 fun WeekOverview(
     selectedDate: LocalDate,
