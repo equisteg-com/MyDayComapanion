@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -26,6 +27,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -79,8 +83,22 @@ fun TaskRows(all: List<Task>, onToggle: (String) -> Unit, onEdit: (String) -> Un
 @Composable
 private fun TaskRow(task: Task, indent: Boolean, onToggle: (String) -> Unit, onEdit: (String) -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(start = if (indent) 24.dp else 0.dp)) {
-        Checkbox(checked = task.status == TaskStatus.DONE, onCheckedChange = { onToggle(task.id) }, modifier = Modifier.testTag("toggle-${task.id}"))
-        Column(Modifier.weight(1f).clickable { onEdit(task.id) }.testTag("task-${task.id}")) {
+        Checkbox(
+            checked = task.status == TaskStatus.DONE,
+            onCheckedChange = { onToggle(task.id) },
+            modifier = Modifier.testTag("toggle-${task.id}").semantics {
+                contentDescription = if (task.status == TaskStatus.DONE) {
+                    "Mark ${task.title} as not done"
+                } else {
+                    "Mark ${task.title} as done"
+                }
+            },
+        )
+        Column(
+            Modifier.weight(1f).heightIn(min = 48.dp)
+                .clickable(role = Role.Button, onClickLabel = "Edit task: ${task.title}") { onEdit(task.id) }
+                .testTag("task-${task.id}"),
+        ) {
             Text((if (task.personal) "🔒 " else "") + task.title)
             val details = listOfNotNull(
                 "${task.durationMinutes} min",
