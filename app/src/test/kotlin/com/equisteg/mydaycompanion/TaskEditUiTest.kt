@@ -77,8 +77,6 @@ class TaskEditUiTest {
         compose.setContent { AppNavigation(viewModel) }
         waitFor(viewModel, "task data") { viewModel.tasks.value.any { it.id == "t1" } }
         compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-t1"))
-        waitFor(viewModel, "task data") { viewModel.tasks.value.any { it.id == "t1" } }
-        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-t1"))
         waitFor(viewModel, "task list") { compose.onAllNodes(hasTestTag("task-t1")).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("toggle-t1").performScrollTo().performClick()
         waitFor(viewModel, "task done") { runBlocking { graph.tasks.get("t1")?.status } == TaskStatus.DONE }
@@ -127,6 +125,8 @@ class TaskEditUiTest {
         runBlocking { graph.tasks.upsert(listOf(task(personal = true))) }
         val viewModel = MainViewModel(TestServices(graph), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
+        waitFor(viewModel, "task data") { viewModel.tasks.value.any { it.id == "t1" } }
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("task-t1"))
         waitFor(viewModel, "task list") { compose.onAllNodes(hasTestTag("task-t1")).fetchSemanticsNodes().isNotEmpty() }
 
         viewModel.onSaveTask(task(personal = true).copy(title = "Doctor follow-up"))
