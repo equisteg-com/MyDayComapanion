@@ -59,7 +59,8 @@ fun SettingsScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
         modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("Privacy", style = MaterialTheme.typography.titleLarge)
+        SettingsPremiumHero()
+        Text("Privacy & data", style = MaterialTheme.typography.titleMedium)
         Text(
             "Plans and saved data live in an encrypted database on this phone. MyDayCompanion " +
                 "does not request internet access and has no account, cloud backup or analytics. " +
