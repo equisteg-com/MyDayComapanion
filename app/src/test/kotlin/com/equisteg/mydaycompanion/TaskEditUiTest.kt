@@ -73,9 +73,9 @@ class TaskEditUiTest {
         val viewModel = MainViewModel(TestServices(graph), Dispatchers.Unconfined)
         compose.setContent { AppNavigation(viewModel) }
         waitFor(viewModel, "task list") { compose.onAllNodes(hasTestTag("task-t1")).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("toggle-t1").performClick()
+        compose.onNodeWithTag("toggle-t1").performScrollTo().performClick()
         waitFor(viewModel, "task done") { runBlocking { graph.tasks.get("t1")?.status } == TaskStatus.DONE }
-        compose.onNodeWithTag("toggle-t1").performClick()
+        compose.onNodeWithTag("toggle-t1").performScrollTo().performClick()
         waitFor(viewModel, "task open again") { runBlocking { graph.tasks.get("t1")?.status } == TaskStatus.OPEN }
     }
 
