@@ -11,6 +11,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -80,7 +82,14 @@ internal fun routineSummary(r: Routine): String {
 
 @Composable
 private fun RoutineRow(r: Routine, busy: Boolean, onUpdate: (Routine) -> Unit, onDelete: (String) -> Unit) {
-    Column(Modifier.fillMaxWidth().testTag("routine-${r.id}")) {
+    Card(
+        modifier = Modifier.fillMaxWidth().testTag("routine-${r.id}"),
+        colors = CardDefaults.cardColors(containerColor =
+            if (r.enabled) MaterialTheme.colorScheme.surfaceContainerHigh
+            else MaterialTheme.colorScheme.surfaceContainerLow),
+        shape = MaterialTheme.shapes.large,
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(r.title, style = MaterialTheme.typography.titleMedium)
@@ -98,6 +107,7 @@ private fun RoutineRow(r: Routine, busy: Boolean, onUpdate: (Routine) -> Unit, o
                 Text(if (r.remind) "Turn reminder off" else "Turn reminder on")
             }
             TextButton(onClick = { onDelete(r.id) }, enabled = !busy, modifier = Modifier.testTag("routine-delete-${r.id}")) { Text("Delete") }
+        }
         }
     }
 }
