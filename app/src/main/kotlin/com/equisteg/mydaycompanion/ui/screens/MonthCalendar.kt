@@ -31,6 +31,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.equisteg.mydaycompanion.domain.model.Task
+import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.productivity.MonthDay
 import com.equisteg.mydaycompanion.domain.productivity.MonthOverview
 import java.time.LocalDate
@@ -51,10 +52,11 @@ fun MonthCalendar(
     tasks: List<Task>,
     onSelectDate: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
+    routines: List<Routine> = emptyList(),
 ) {
     val locale = Locale.getDefault()
-    val cells = remember(month, tasks, today, locale) {
-        MonthOverview.grid(month, tasks, today, locale)
+    val cells = remember(month, tasks, today, locale, routines) {
+        MonthOverview.grid(month, tasks, today, locale, routines)
     }
     val narrow = LocalConfiguration.current.screenWidthDp < 380 ||
         LocalDensity.current.fontScale > 1.3f
@@ -103,7 +105,7 @@ fun MonthCalendar(
                     }
                 }
             }
-            Text("Select any date to review its plan. Counts exclude cancelled tasks and steps.",
+            Text("Tap a day to review its plan. Future totals preview active routines; cancelled tasks and steps are excluded.",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -160,6 +162,7 @@ fun CalendarOverview(
     today: LocalDate,
     tasks: List<Task>,
     onSelectDate: (LocalDate) -> Unit,
+    routines: List<Routine> = emptyList(),
 ) {
     var mode by rememberSaveable { mutableStateOf("WEEK") }
     var monthName by rememberSaveable(selectedDate.year, selectedDate.monthValue) {
@@ -177,13 +180,14 @@ fun CalendarOverview(
             }, modifier = Modifier.testTag("calendar-today")) { Text("Jump to today") }
         }
         if (mode == "WEEK") {
-            WeekOverview(selectedDate, tasks, onSelectDate)
+            WeekOverview(selectedDate, tasks, onSelectDate, routines, today)
         } else {
             MonthCalendar(
                 month = YearMonth.parse(monthName), selectedDate = selectedDate,
                 today = today, tasks = tasks,
                 onSelectDate = onSelectDate,
                 onMonthChange = { monthName = it.toString() },
+                routines = routines,
             )
         }
     }
