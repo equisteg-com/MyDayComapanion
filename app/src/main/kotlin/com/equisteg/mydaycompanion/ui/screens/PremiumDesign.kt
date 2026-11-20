@@ -99,6 +99,7 @@ fun PlannerCommandCenter(
     onWeek: () -> Unit,
     onFind: () -> Unit,
     onReplan: () -> Unit,
+    onAsk: (String) -> Unit,
     busy: Boolean,
 ) {
     Card(
@@ -130,6 +131,16 @@ fun PlannerCommandCenter(
                     enabled = !busy,
                     modifier = Modifier.testTag("premium-replan"),
                 ) { Text("Replan") }
+                OutlinedButton(
+                    onClick = { onAsk("show my deadlines") },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("premium-deadlines"),
+                ) { Text("Deadlines") }
+                OutlinedButton(
+                    onClick = { onAsk("week summary") },
+                    enabled = !busy,
+                    modifier = Modifier.testTag("premium-week-summary"),
+                ) { Text("Weekly insight") }
             }
         }
     }
