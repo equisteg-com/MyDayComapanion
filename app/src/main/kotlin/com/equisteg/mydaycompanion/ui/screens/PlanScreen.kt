@@ -147,8 +147,9 @@ fun PlanScreen(viewModel: MainViewModel, modifier: Modifier = Modifier) {
             )
         }
         if (showWeek) item {
-            WeekOverview(
+            CalendarOverview(
                 selectedDate = state.selectedDate,
+                today = today,
                 tasks = tasks,
                 onSelectDate = viewModel::selectDate,
             )
