@@ -71,6 +71,8 @@ class DeviceActionsUiTest {
         compose.onNodeWithTag("read-day").performClick()
         compose.waitUntil(5_000) { graph.phone.spoken.isNotEmpty() }
         assertTrue(graph.phone.spoken.single().startsWith("1 task today."), graph.phone.spoken.single())
+        // The redesigned page can scroll the voice input out of composition while the read action is visible.
+        compose.onNodeWithTag("plan-list").performScrollToNode(hasTestTag("voice"))
         assertTrue(compose.onAllNodes(hasTestTag("voice")).fetchSemanticsNodes().isNotEmpty(), "mic button shown")
     }
 
