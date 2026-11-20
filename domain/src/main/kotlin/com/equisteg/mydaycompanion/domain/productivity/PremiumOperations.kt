@@ -1,6 +1,7 @@
 package com.equisteg.mydaycompanion.domain.productivity
 
 import com.equisteg.mydaycompanion.domain.model.Priority
+import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.Task
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import java.time.LocalDate
@@ -89,6 +90,7 @@ data class MonthDay(
     val planned: Int,
     val done: Int,
     val overdueOpen: Int,
+    val projectedRoutines: Int = 0,
 )
 
 /**
@@ -96,7 +98,8 @@ data class MonthDay(
  * Never includes cancelled tasks or subtasks in headline completion statistics.
  */
 object MonthOverview {
-    fun grid(month: YearMonth, tasks: List<Task>, today: LocalDate, locale: Locale = Locale.getDefault()): List<MonthDay> {
+    fun grid(month: YearMonth, tasks: List<Task>, today: LocalDate,
+        locale: Locale = Locale.getDefault(), routines: List<Routine> = emptyList()): List<MonthDay> {
         val first = month.atDay(1)
         val firstWeekday = WeekFields.of(locale).firstDayOfWeek
         val offset = (first.dayOfWeek.value - firstWeekday.value + 7) % 7
@@ -104,6 +107,9 @@ object MonthOverview {
         val totalCells = ((offset + month.lengthOfMonth() + 6) / 7 * 7).coerceIn(28, 42)
         val counts = HashMap<LocalDate, IntArray>()
         val last = start.plusDays(totalCells.toLong() - 1)
+        val generated = tasks.asSequence()
+            .filter { it.routineId != null && it.date != null }
+            .map { it.routineId!! to it.date!! }.toSet()
         for (task in tasks) {
             if (task.status == TaskStatus.CANCELLED || task.parentId != null) continue
             val day = task.date ?: continue
@@ -119,8 +125,12 @@ object MonthOverview {
         return (0 until totalCells).map { n ->
             val date = start.plusDays(n.toLong())
             val c = counts[date]
-            MonthDay(date, YearMonth.from(date) == month, c?.get(0) ?: 0,
-                c?.get(1) ?: 0, c?.get(2) ?: 0)
+            val upcoming = if (date.isBefore(today)) 0 else
+                routines.count { routine ->
+                    routine.isDueOn(date) && (routine.id to date) !in generated
+                }
+            MonthDay(date, YearMonth.from(date) == month, (c?.get(0) ?: 0) + upcoming,
+                c?.get(1) ?: 0, c?.get(2) ?: 0, upcoming)
         }
     }
 }
