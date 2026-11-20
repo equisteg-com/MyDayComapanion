@@ -20,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.equisteg.mydaycompanion.domain.model.Task
+import com.equisteg.mydaycompanion.domain.model.Routine
 import com.equisteg.mydaycompanion.domain.model.TaskStatus
 import java.util.Locale
 import java.time.LocalDate
@@ -33,12 +34,15 @@ private val weekMonth = DateTimeFormatter.ofPattern("d MMM")
 data class WeekDaySummary(val date: LocalDate, val planned: Int, val done: Int)
 
 /** Computation is independent from the UI and omits cancelled routine instances. */
-fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>, locale: Locale = Locale.getDefault()): List<WeekDaySummary> {
+fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>, locale: Locale = Locale.getDefault(),
+    routines: List<Routine> = emptyList(), today: LocalDate = selectedDate): List<WeekDaySummary> {
     val firstDay = selectedDate.with(TemporalAdjusters.previousOrSame(WeekFields.of(locale).firstDayOfWeek))
     val planned = IntArray(7)
     val done = IntArray(7)
+    val generated = tasks.asSequence().filter { it.routineId != null && it.date != null }
+        .map { it.routineId!! to it.date!! }.toSet()
     for (task in tasks) {
-        if (task.status == TaskStatus.CANCELLED) continue
+        if (task.status == TaskStatus.CANCELLED || task.parentId != null) continue
         val date = task.date ?: continue
         val offset = java.time.temporal.ChronoUnit.DAYS.between(firstDay, date)
         if (offset !in 0L..6L) continue
@@ -47,7 +51,11 @@ fun weekSummaries(selectedDate: LocalDate, tasks: List<Task>, locale: Locale = L
         if (task.status == TaskStatus.DONE) done[index]++
     }
     return (0..6).map { offset ->
-        WeekDaySummary(firstDay.plusDays(offset.toLong()), planned[offset], done[offset])
+        val date = firstDay.plusDays(offset.toLong())
+        val futureRoutines = if (date.isBefore(today)) 0 else routines.count {
+            it.isDueOn(date) && (it.id to date) !in generated
+        }
+        WeekDaySummary(date, planned[offset] + futureRoutines, done[offset])
     }
 }
 
@@ -57,8 +65,12 @@ fun WeekOverview(
     selectedDate: LocalDate,
     tasks: List<Task>,
     onSelectDate: (LocalDate) -> Unit,
+    routines: List<Routine> = emptyList(),
+    today: LocalDate = selectedDate,
 ) {
-    val week = remember(selectedDate, tasks) { weekSummaries(selectedDate, tasks) }
+    val week = remember(selectedDate, tasks, routines, today) {
+        weekSummaries(selectedDate, tasks, routines = routines, today = today)
+    }
     Card(
         modifier = Modifier.fillMaxWidth().testTag("week-overview"),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
@@ -67,6 +79,9 @@ fun WeekOverview(
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text("Your week · ${week.first().date.format(weekMonth)}–${week.last().date.format(weekMonth)}",
                 style = MaterialTheme.typography.titleMedium)
+            Text("Future totals include upcoming routines, not yet saved as individual tasks.",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
